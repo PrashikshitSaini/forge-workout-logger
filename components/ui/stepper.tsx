@@ -72,7 +72,7 @@ export function Stepper({
           onChange={(e) => handleType(e.target.value)}
           onFocus={(e) => e.currentTarget.select()}
           placeholder="–"
-          className="tabular w-full min-w-0 bg-transparent text-center text-lg font-semibold focus:outline-none"
+          className="tabular w-full min-w-0 bg-transparent text-center text-lg font-semibold text-foreground caret-accent placeholder:text-muted-foreground focus:outline-none"
         />
         {suffix ? <span className="text-xs text-muted-foreground">{suffix}</span> : null}
       </div>
