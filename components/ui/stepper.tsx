@@ -60,7 +60,7 @@ export function Stepper({
         type="button"
         aria-label={`Decrease ${ariaLabel ?? ""}`.trim()}
         onClick={() => bump(-1)}
-        className="grid w-11 place-items-center text-muted hover:text-foreground active:bg-border/60 rounded-l-lg"
+        className="grid w-10 place-items-center text-muted hover:text-foreground active:bg-border/60 rounded-l-lg"
       >
         <Minus size={18} />
       </button>
@@ -80,7 +80,7 @@ export function Stepper({
         type="button"
         aria-label={`Increase ${ariaLabel ?? ""}`.trim()}
         onClick={() => bump(1)}
-        className="grid w-11 place-items-center text-muted hover:text-foreground active:bg-border/60 rounded-r-lg"
+        className="grid w-10 place-items-center text-muted hover:text-foreground active:bg-border/60 rounded-r-lg"
       >
         <Plus size={18} />
       </button>

@@ -7,7 +7,6 @@ import { Stepper } from "@/components/ui/stepper";
 import { toast } from "@/components/ui/toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { deleteSet, updateSet, type SetPatch } from "@/lib/mutations";
-import { WEIGHT_UNIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 /** One editable set. Optimistic local state; writes are debounced and retried. */
@@ -109,7 +108,6 @@ export function SetRow({
             }}
             step={5}
             decimals
-            suffix={WEIGHT_UNIT}
             className="flex-1"
           />
           <Stepper
@@ -120,7 +118,6 @@ export function SetRow({
               schedule({ reps: v });
             }}
             step={1}
-            suffix="reps"
             className="flex-1"
           />
         </>
@@ -134,7 +131,6 @@ export function SetRow({
               schedule({ duration_seconds: v != null ? v * 60 : null });
             }}
             step={1}
-            suffix="min"
             className="flex-1"
           />
           <Stepper
@@ -145,7 +141,6 @@ export function SetRow({
               schedule({ level: v });
             }}
             step={1}
-            suffix="lvl"
             className="flex-1"
           />
         </>
