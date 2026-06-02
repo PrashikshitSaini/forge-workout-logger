@@ -6,6 +6,7 @@ import type {
   Regime,
   Routine,
   RoutineExercise,
+  SessionExercise,
   WorkoutSet,
 } from "./types";
 
@@ -88,6 +89,32 @@ export async function updateSessionExerciseNotes(
     .update({ notes })
     .eq("id", sessionExerciseId);
   if (error) throw error;
+}
+
+/** Add an exercise to an in-progress session, with `setCount` empty sets. */
+export async function addSessionExercise(
+  sb: SupabaseClient,
+  sessionId: string,
+  exerciseId: string,
+  position: number,
+  setCount = 3,
+): Promise<{ sessionExercise: SessionExercise; sets: WorkoutSet[] }> {
+  const { data: seData, error } = await sb
+    .from("session_exercises")
+    .insert({ session_id: sessionId, exercise_id: exerciseId, position })
+    .select("*")
+    .single();
+  if (error) throw error;
+  const sessionExercise = seData as SessionExercise;
+
+  const rows = Array.from({ length: Math.max(1, setCount) }, (_, i) => ({
+    session_exercise_id: sessionExercise.id,
+    set_number: i + 1,
+  }));
+  const { data: setsData, error: setErr } = await sb.from("sets").insert(rows).select("*");
+  if (setErr) throw setErr;
+
+  return { sessionExercise, sets: (setsData ?? []) as WorkoutSet[] };
 }
 
 /* ── Regimes ─────────────────────────────────────────────────────────────── */
@@ -173,6 +200,25 @@ export async function addRoutineExercise(
     .single();
   if (error) throw error;
   return data as RoutineExercise;
+}
+
+/** Add an exercise to a routine template only if it isn't already there. */
+export async function ensureRoutineExercise(
+  sb: SupabaseClient,
+  routineId: string,
+  exerciseId: string,
+  position: number,
+  targetSets = 3,
+): Promise<void> {
+  const { data: existing, error } = await sb
+    .from("routine_exercises")
+    .select("id")
+    .eq("routine_id", routineId)
+    .eq("exercise_id", exerciseId)
+    .maybeSingle();
+  if (error) throw error;
+  if (existing) return;
+  await addRoutineExercise(sb, routineId, exerciseId, position, targetSets, null);
 }
 
 export async function updateRoutineExercise(

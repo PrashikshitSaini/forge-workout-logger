@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Play } from "lucide-react";
 import type { Regime, RoutineWithExercises, SessionFull } from "@/lib/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
@@ -12,7 +11,7 @@ import {
   getSessionFull,
   getSessionIdForDate,
 } from "@/lib/queries";
-import { startSession } from "@/lib/mutations";
+import { createRoutine, startSession } from "@/lib/mutations";
 import { dayOfWeekFor, todayISODate } from "@/lib/format";
 import { dayLabel } from "@/lib/constants";
 import { PageHeader } from "@/components/ui/page-header";
@@ -119,6 +118,24 @@ export function LogScreen() {
     }
   }
 
+  // Empty day: create a routine for this weekday and start a session right away,
+  // so the user can build it by adding exercises in the log as they train.
+  async function handleStartNewDay() {
+    if (!regime || starting) return;
+    setStarting(true);
+    try {
+      const created = await createRoutine(sb, regime.id, dayLabel(selectedDay), selectedDay, routines.length);
+      setRoutines((prev) => [...prev, { ...created, routine_exercises: [] }]);
+      const id = await startSession(sb, regime.id, created.id, today);
+      const full = await getSessionFull(sb, id);
+      setSession(full);
+    } catch {
+      toast("Couldn't start the day.", "error");
+    } finally {
+      setStarting(false);
+    }
+  }
+
   if (phase === "loading") {
     return (
       <div className="grid flex-1 place-items-center py-24 text-muted">
@@ -163,10 +180,21 @@ export function LogScreen() {
         </div>
       ) : !routine ? (
         <div className="px-4 py-12 text-center">
-          <p className="text-muted">No routine for {dayLabel(selectedDay)} yet.</p>
-          <Link href="/routines" className="mt-3 inline-block">
-            <Button variant="secondary">Build this day</Button>
-          </Link>
+          <p className="text-muted">No workout for {dayLabel(selectedDay)} yet.</p>
+          <Button className="mt-4" onClick={handleStartNewDay} disabled={starting}>
+            {starting ? (
+              <>
+                <Loader2 size={18} className="animate-spin" /> Starting…
+              </>
+            ) : (
+              <>
+                <Play size={18} /> Start {dayLabel(selectedDay)} workout
+              </>
+            )}
+          </Button>
+          <p className="mx-auto mt-3 max-w-xs text-xs text-muted-foreground">
+            Add exercises as you train — they&apos;re saved to this day for next week.
+          </p>
         </div>
       ) : session ? (
         <SessionLogger session={session} lastSession={lastSession} />
