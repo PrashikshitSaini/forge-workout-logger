@@ -27,14 +27,20 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Every metric optional and bounded; zod strips unknown keys by default, so
 // extra fields a phone automation tacks on are ignored rather than rejected.
+// Coerce so a model (or automation) that returns "8432" as a string still
+// validates. `.nullable()` short-circuits before coercion, so null stays null
+// and omitted keys stay undefined — only real present values get Number()'d.
+const int = (max: number) => z.coerce.number().int().min(0).max(max).nullable().optional();
+const num = (max: number) => z.coerce.number().min(0).max(max).nullable().optional();
+
 const MetricsSchema = z.object({
-  steps: z.number().int().min(0).max(200_000).nullable().optional(),
-  active_kcal: z.number().min(0).max(30_000).nullable().optional(),
-  total_kcal: z.number().min(0).max(30_000).nullable().optional(),
-  distance_m: z.number().min(0).max(1_000_000).nullable().optional(),
-  sleep_minutes: z.number().int().min(0).max(1_440).nullable().optional(),
-  resting_hr: z.number().int().min(0).max(250).nullable().optional(),
-  avg_hr: z.number().int().min(0).max(250).nullable().optional(),
+  steps: int(200_000),
+  active_kcal: num(30_000),
+  total_kcal: num(30_000),
+  distance_m: num(1_000_000),
+  sleep_minutes: int(1_440),
+  resting_hr: int(250),
+  avg_hr: int(250),
 });
 type Metrics = z.infer<typeof MetricsSchema>;
 
@@ -107,9 +113,20 @@ async function normalizeRaw(raw: string): Promise<Metrics> {
   const content = data.choices?.[0]?.message?.content?.trim();
   if (!content) throw new Error("Empty normalization response.");
 
-  // Strip accidental code fences, then parse + validate.
-  const json = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-  return MetricsSchema.parse(JSON.parse(json));
+  // Be tolerant of a model that wraps the object in prose or code fences:
+  // pull out the first {...} block before parsing.
+  const start = content.indexOf("{");
+  const end = content.lastIndexOf("}");
+  if (start < 0 || end <= start) {
+    throw new Error(`No JSON object in normalization response: ${content.slice(0, 200)}`);
+  }
+  try {
+    return MetricsSchema.parse(JSON.parse(content.slice(start, end + 1)));
+  } catch (err) {
+    // Surface the model's actual output server-side to make 422s debuggable.
+    console.error("health-sync: normalization parse/validate failed", content.slice(0, 500));
+    throw err;
+  }
 }
 
 export async function POST(req: Request) {
