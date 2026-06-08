@@ -372,3 +372,51 @@ export async function upsertDailyHealth(
   if (error) throw error;
   return data as DailyHealth;
 }
+
+/**
+ * Replace-upsert one day's metrics from a signed-in user editing by hand.
+ *
+ * Unlike upsertDailyHealth (merge, used by the sync endpoint), this writes the
+ * provided values verbatim — a null clears that field — so the edit form is the
+ * source of truth for the row. user_id comes from the auth session + RLS.
+ */
+export async function setDailyHealth(
+  sb: SupabaseClient,
+  input: DailyHealthInput,
+): Promise<DailyHealth> {
+  const {
+    data: { user },
+    error: userErr,
+  } = await sb.auth.getUser();
+  if (userErr) throw userErr;
+  if (!user) throw new Error("Not signed in.");
+
+  const { data, error } = await sb
+    .from("daily_health")
+    .upsert(
+      {
+        user_id: user.id,
+        recorded_on: input.recorded_on,
+        steps: input.steps ?? null,
+        active_kcal: input.active_kcal ?? null,
+        total_kcal: input.total_kcal ?? null,
+        distance_m: input.distance_m ?? null,
+        sleep_minutes: input.sleep_minutes ?? null,
+        resting_hr: input.resting_hr ?? null,
+        avg_hr: input.avg_hr ?? null,
+        source: input.source ?? "manual",
+        synced_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,recorded_on" },
+    )
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as DailyHealth;
+}
+
+/** Delete one day's watch row. RLS scopes the delete to the signed-in user. */
+export async function deleteDailyHealth(sb: SupabaseClient, recordedOn: string): Promise<void> {
+  const { error } = await sb.from("daily_health").delete().eq("recorded_on", recordedOn);
+  if (error) throw error;
+}
