@@ -2,16 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Save } from "lucide-react";
-import type { BodyStat } from "@/lib/types";
+import type { BodyStat, DailyHealth } from "@/lib/types";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Label, Textarea } from "@/components/ui/input";
 import { Stepper } from "@/components/ui/stepper";
 import { toast } from "@/components/ui/toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getBodyStats } from "@/lib/queries";
+import { getBodyStats, getDailyHealth } from "@/lib/queries";
 import { upsertBodyStat } from "@/lib/mutations";
-import { formatShortDate, todayISODate } from "@/lib/format";
+import { formatDuration, formatRelativeDate, formatShortDate, todayISODate } from "@/lib/format";
 import { WEIGHT_UNIT } from "@/lib/constants";
 
 export function StatsScreen() {
@@ -19,6 +19,7 @@ export function StatsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [stats, setStats] = useState<BodyStat[]>([]);
+  const [health, setHealth] = useState<DailyHealth[]>([]);
 
   const [recordedOn, setRecordedOn] = useState(todayISODate());
   const [bodyweight, setBodyweight] = useState<number | null>(null);
@@ -30,7 +31,12 @@ export function StatsScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setStats(await getBodyStats(sb, 60));
+      const [bodyStats, dailyHealth] = await Promise.all([
+        getBodyStats(sb, 60),
+        getDailyHealth(sb, 60),
+      ]);
+      setStats(bodyStats);
+      setHealth(dailyHealth);
     } catch {
       toast("Couldn't load stats.", "error");
     } finally {
@@ -118,6 +124,8 @@ export function StatsScreen() {
           </Button>
         </div>
 
+        <WatchSynced health={health} loading={loading} />
+
         <section className="space-y-2">
           <h2 className="text-xs font-medium uppercase tracking-wide text-muted">History</h2>
           {loading ? (
@@ -165,6 +173,80 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-1.5">
       <Label>{label}</Label>
       {children}
+    </div>
+  );
+}
+
+/* ── Watch-synced daily metrics (read-only) ──────────────────────────────── */
+
+const fmtSteps = (n: number | null) => (n == null ? "–" : n.toLocaleString());
+const fmtSleep = (m: number | null) => (m == null ? "–" : formatDuration(m * 60));
+const fmtKcal = (k: number | null) => (k == null ? "–" : Math.round(k).toLocaleString());
+
+function WatchSynced({ health, loading }: { health: DailyHealth[]; loading: boolean }) {
+  const latest = health[0];
+
+  return (
+    <section className="space-y-2">
+      <h2 className="text-xs font-medium uppercase tracking-wide text-muted">
+        Watch — synced automatically
+      </h2>
+
+      {loading ? (
+        <div className="grid place-items-center py-8 text-muted">
+          <Loader2 className="animate-spin" />
+        </div>
+      ) : !latest ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          Nothing synced yet. Once your phone sends watch data, it shows up here.
+        </p>
+      ) : (
+        <>
+          <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
+            <p className="text-xs text-muted-foreground">{formatRelativeDate(latest.recorded_on)}</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Tile label="Steps" value={fmtSteps(latest.steps)} />
+              <Tile label="Sleep" value={fmtSleep(latest.sleep_minutes)} />
+              <Tile label="Active kcal" value={fmtKcal(latest.active_kcal)} />
+              <Tile label="Resting HR" value={latest.resting_hr == null ? "–" : String(latest.resting_hr)} />
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-border bg-surface">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-medium">Date</th>
+                  <th className="tabular px-2 py-2 text-right font-medium">Steps</th>
+                  <th className="tabular px-2 py-2 text-right font-medium">Sleep</th>
+                  <th className="tabular px-2 py-2 text-right font-medium">Cal</th>
+                  <th className="tabular px-3 py-2 text-right font-medium">RHR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {health.map((h) => (
+                  <tr key={h.id} className="border-b border-border last:border-0">
+                    <td className="px-3 py-2">{formatShortDate(h.recorded_on)}</td>
+                    <td className="tabular px-2 py-2 text-right">{fmtSteps(h.steps)}</td>
+                    <td className="tabular px-2 py-2 text-right">{fmtSleep(h.sleep_minutes)}</td>
+                    <td className="tabular px-2 py-2 text-right">{fmtKcal(h.active_kcal)}</td>
+                    <td className="tabular px-3 py-2 text-right">{h.resting_hr ?? "–"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function Tile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface-2 p-3">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="tabular mt-0.5 text-lg font-semibold text-foreground">{value}</p>
     </div>
   );
 }

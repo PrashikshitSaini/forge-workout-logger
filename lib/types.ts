@@ -91,6 +91,27 @@ export interface BodyStat {
   created_at: string;
 }
 
+/**
+ * Day-level metrics synced from a wearable (see supabase/migrations/0004).
+ * Distinct from BodyStat, which holds manual entries — this table is the home
+ * for watch-sourced data and is never hand-edited in the app.
+ */
+export interface DailyHealth {
+  id: string;
+  user_id: string;
+  recorded_on: string; // ISO date
+  steps: number | null;
+  active_kcal: number | null;
+  total_kcal: number | null;
+  distance_m: number | null;
+  sleep_minutes: number | null;
+  resting_hr: number | null;
+  avg_hr: number | null;
+  source: string;
+  synced_at: string;
+  created_at: string;
+}
+
 /* ── Composed shapes used by the UI ──────────────────────────────────────── */
 
 /** A routine joined with its ordered exercises (the day template). */

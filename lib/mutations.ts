@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   BodyStat,
+  DailyHealth,
   Exercise,
   ExerciseType,
   Regime,
@@ -298,4 +299,76 @@ export async function upsertBodyStat(
     .single();
   if (error) throw error;
   return data as BodyStat;
+}
+
+/* ── Daily health (watch sync) ───────────────────────────────────────────── */
+
+/** The metric fields a sync can carry, keyed by recorded_on. */
+export interface DailyHealthInput {
+  recorded_on: string;
+  steps?: number | null;
+  active_kcal?: number | null;
+  total_kcal?: number | null;
+  distance_m?: number | null;
+  sleep_minutes?: number | null;
+  resting_hr?: number | null;
+  avg_hr?: number | null;
+  source?: string;
+}
+
+const DAILY_HEALTH_METRICS = [
+  "steps",
+  "active_kcal",
+  "total_kcal",
+  "distance_m",
+  "sleep_minutes",
+  "resting_hr",
+  "avg_hr",
+] as const;
+
+/**
+ * Merge-upsert one day's synced metrics, keyed on (user_id, recorded_on).
+ *
+ * `user_id` is passed explicitly because this runs from a token-authenticated
+ * endpoint using the service-role client — there is no auth session to read it
+ * from. Merge semantics: only the metrics actually provided (non-null) are
+ * written; omitted or null fields preserve whatever was synced before, so a
+ * partial sync can never wipe good data already on the row.
+ */
+export async function upsertDailyHealth(
+  sb: SupabaseClient,
+  userId: string,
+  input: DailyHealthInput,
+): Promise<DailyHealth> {
+  const { data: existing, error: readErr } = await sb
+    .from("daily_health")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("recorded_on", input.recorded_on)
+    .maybeSingle();
+  if (readErr) throw readErr;
+  const base = existing as DailyHealth | null;
+
+  const merged: Record<string, number | null> = {};
+  for (const key of DAILY_HEALTH_METRICS) {
+    // `??` only falls through on null/undefined, so a real 0 is preserved.
+    merged[key] = input[key] ?? base?.[key] ?? null;
+  }
+
+  const { data, error } = await sb
+    .from("daily_health")
+    .upsert(
+      {
+        user_id: userId,
+        recorded_on: input.recorded_on,
+        ...merged,
+        source: input.source ?? base?.source ?? "health_connect",
+        synced_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,recorded_on" },
+    )
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as DailyHealth;
 }

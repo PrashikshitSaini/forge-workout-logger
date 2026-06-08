@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   BodyStat,
+  DailyHealth,
   Exercise,
   Regime,
   RoutineWithExercises,
@@ -207,6 +208,21 @@ export async function getBodyStats(
     .order("recorded_on", { ascending: false })
     .limit(limit)
     .returns<BodyStat[]>();
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Watch-synced daily metrics (most recent first). See lib/types DailyHealth. */
+export async function getDailyHealth(
+  sb: SupabaseClient,
+  limit = 90,
+): Promise<DailyHealth[]> {
+  const { data, error } = await sb
+    .from("daily_health")
+    .select("*")
+    .order("recorded_on", { ascending: false })
+    .limit(limit)
+    .returns<DailyHealth[]>();
   if (error) throw error;
   return data ?? [];
 }
