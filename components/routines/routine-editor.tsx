@@ -1,16 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  ChevronDown,
+  ChevronUp,
+  GripVertical,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  X,
+} from "lucide-react";
 import type { Exercise, RoutineExercise, RoutineWithExercises } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { ExercisePicker } from "./exercise-picker";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { addRoutineExercise, removeRoutineExercise, updateRoutineExercise } from "@/lib/mutations";
+import {
+  addRoutineExercise,
+  removeRoutineExercise,
+  swapRoutineExercise,
+  updateRoutineExercise,
+} from "@/lib/mutations";
 import { dayLabel } from "@/lib/constants";
 
 type Item = RoutineExercise & { exercise: Exercise };
+type PickerMode = "add" | "swap";
 
 export function RoutineEditor({
   routine,
@@ -24,6 +40,26 @@ export function RoutineEditor({
   const [sb] = useState(() => createSupabaseBrowserClient());
   const [items, setItems] = useState<Item[]>(routine.routine_exercises);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerMode, setPickerMode] = useState<PickerMode>("add");
+  const [swapTarget, setSwapTarget] = useState<Item | null>(null);
+
+  function openAddPicker() {
+    setPickerMode("add");
+    setSwapTarget(null);
+    setPickerOpen(true);
+  }
+
+  function openSwapPicker(item: Item) {
+    setPickerMode("swap");
+    setSwapTarget(item);
+    setPickerOpen(true);
+  }
+
+  function closePicker() {
+    setPickerOpen(false);
+    setPickerMode("add");
+    setSwapTarget(null);
+  }
 
   async function handlePick(exercise: Exercise) {
     if (items.some((it) => it.exercise_id === exercise.id)) {
@@ -35,6 +71,26 @@ export function RoutineEditor({
       setItems((prev) => [...prev, { ...re, exercise }]);
     } catch {
       toast("Couldn't add exercise.", "error");
+    }
+  }
+
+  async function handleSwap(item: Item, exercise: Exercise) {
+    if (exercise.id === item.exercise_id) return;
+    if (items.some((it) => it.id !== item.id && it.exercise_id === exercise.id)) {
+      toast("Already in this routine.", "info");
+      return;
+    }
+    const prev = items;
+    setItems((list) =>
+      list.map((it) =>
+        it.id === item.id ? { ...it, exercise_id: exercise.id, exercise } : it,
+      ),
+    );
+    try {
+      await swapRoutineExercise(sb, item.id, exercise.id);
+    } catch {
+      setItems(prev);
+      toast("Couldn't replace exercise.", "error");
     }
   }
 
@@ -103,8 +159,17 @@ export function RoutineEditor({
       </header>
 
       <ul className="divide-y divide-border">
+        <AnimatePresence initial={false}>
         {items.map((it, i) => (
-          <li key={it.id} className="flex items-center gap-2 px-3 py-2">
+          <motion.li
+            key={it.id}
+            layout
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18 }}
+            className="flex items-center gap-2 overflow-hidden px-3 py-2"
+          >
             <GripVertical size={14} className="shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{it.exercise.name}</p>
@@ -160,14 +225,23 @@ export function RoutineEditor({
             </div>
             <button
               type="button"
+              onClick={() => openSwapPicker(it)}
+              aria-label="Replace exercise"
+              className="grid h-8 w-7 shrink-0 place-items-center text-muted-foreground hover:text-foreground"
+            >
+              <RefreshCw size={14} />
+            </button>
+            <button
+              type="button"
               onClick={() => handleRemove(it.id)}
               aria-label="Remove exercise"
               className="grid h-8 w-7 shrink-0 place-items-center text-muted-foreground hover:text-danger"
             >
               <X size={15} />
             </button>
-          </li>
+          </motion.li>
         ))}
+        </AnimatePresence>
         {items.length === 0 ? (
           <li className="px-3 py-3 text-sm text-muted-foreground">No exercises yet.</li>
         ) : null}
@@ -176,7 +250,7 @@ export function RoutineEditor({
       <div className="border-t border-border px-3 py-2">
         <button
           type="button"
-          onClick={() => setPickerOpen(true)}
+          onClick={openAddPicker}
           className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm text-muted hover:bg-surface-2 hover:text-foreground"
         >
           <Plus size={16} /> Add exercise
@@ -185,8 +259,11 @@ export function RoutineEditor({
 
       <ExercisePicker
         open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onPick={handlePick}
+        onClose={closePicker}
+        onPick={(exercise) => {
+          if (pickerMode === "swap" && swapTarget) void handleSwap(swapTarget, exercise);
+          else void handlePick(exercise);
+        }}
         excludeIds={items.map((it) => it.exercise_id)}
       />
     </section>

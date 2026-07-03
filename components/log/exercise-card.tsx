@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, StickyNote } from "lucide-react";
+import { MoreVertical, Plus, StickyNote } from "lucide-react";
 import type { SessionExerciseFull, WorkoutSet } from "@/lib/types";
 import { SetRow } from "./set-row";
 import { Textarea } from "@/components/ui/input";
@@ -15,10 +15,13 @@ export function ExerciseCard({
   index,
   sessionExercise,
   lastSummary,
+  onOpenActions,
 }: {
   index: number;
   sessionExercise: SessionExerciseFull;
   lastSummary?: string;
+  /** Opens the replace / remove action sheet for this exercise. */
+  onOpenActions: () => void;
 }) {
   const sb = createSupabaseBrowserClient();
   const ex = sessionExercise.exercise;
@@ -69,17 +72,27 @@ export function ExerciseCard({
             {[ex.equipment, ex.muscle_group].filter(Boolean).join(" · ") || "—"}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowNotes((v) => !v)}
-          aria-label="Toggle notes"
-          className={cn(
-            "grid h-8 w-8 shrink-0 place-items-center rounded-lg",
-            showNotes || notes ? "text-accent" : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <StickyNote size={16} />
-        </button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => setShowNotes((v) => !v)}
+            aria-label="Toggle notes"
+            className={cn(
+              "grid h-8 w-8 place-items-center rounded-lg",
+              showNotes || notes ? "text-accent" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <StickyNote size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={onOpenActions}
+            aria-label="Replace or remove exercise"
+            className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-2"
+          >
+            <MoreVertical size={16} />
+          </button>
+        </div>
       </header>
 
       {lastSummary ? (

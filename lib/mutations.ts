@@ -118,6 +118,47 @@ export async function addSessionExercise(
   return { sessionExercise, sets: (setsData ?? []) as WorkoutSet[] };
 }
 
+/** Remove an exercise from a session. The FK cascade deletes its sets too. */
+export async function deleteSessionExercise(
+  sb: SupabaseClient,
+  sessionExerciseId: string,
+): Promise<void> {
+  const { error } = await sb.from("session_exercises").delete().eq("id", sessionExerciseId);
+  if (error) throw error;
+}
+
+/**
+ * Replace the exercise on a session row, keeping its logged sets intact — they
+ * reference the session_exercise row, not the exercise, so swapping (e.g.
+ * "Incline Bench Press" → "Incline Bench Press Machine") preserves everything
+ * already entered for it.
+ */
+export async function swapSessionExercise(
+  sb: SupabaseClient,
+  sessionExerciseId: string,
+  newExerciseId: string,
+): Promise<void> {
+  const { error } = await sb
+    .from("session_exercises")
+    .update({ exercise_id: newExerciseId })
+    .eq("id", sessionExerciseId);
+  if (error) throw error;
+}
+
+/** Persist a new order for a session's exercises (position = array index). */
+export async function reorderSessionExercises(
+  sb: SupabaseClient,
+  orderedIds: string[],
+): Promise<void> {
+  const results = await Promise.all(
+    orderedIds.map((id, position) =>
+      sb.from("session_exercises").update({ position }).eq("id", id),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw failed.error;
+}
+
 /* ── Regimes ─────────────────────────────────────────────────────────────── */
 
 /** First-run only: create the very first active regime (none exists yet). */
@@ -234,6 +275,75 @@ export async function updateRoutineExercise(
 export async function removeRoutineExercise(sb: SupabaseClient, id: string): Promise<void> {
   const { error } = await sb.from("routine_exercises").delete().eq("id", id);
   if (error) throw error;
+}
+
+/** Replace the exercise on a routine row by its id (used by the Routines editor). */
+export async function swapRoutineExercise(
+  sb: SupabaseClient,
+  routineExerciseId: string,
+  newExerciseId: string,
+): Promise<void> {
+  const { error } = await sb
+    .from("routine_exercises")
+    .update({ exercise_id: newExerciseId })
+    .eq("id", routineExerciseId);
+  if (error) throw error;
+}
+
+/* ── Routine write-through (keep a day's template in sync with live edits) ──
+ * A session starts as a 1:1 copy of its routine, and every in-workout edit is
+ * mirrored back here, so the routine can be matched by exercise_id. Each helper
+ * is a safe no-op when the routine doesn't carry that exercise (e.g. it was
+ * added ad-hoc after the session began, or the session had no routine).
+ */
+
+/** Swap an exercise in a routine template, matched by its current exercise. */
+export async function swapRoutineExerciseByExercise(
+  sb: SupabaseClient,
+  routineId: string,
+  fromExerciseId: string,
+  toExerciseId: string,
+): Promise<void> {
+  if (fromExerciseId === toExerciseId) return;
+  const { error } = await sb
+    .from("routine_exercises")
+    .update({ exercise_id: toExerciseId })
+    .eq("routine_id", routineId)
+    .eq("exercise_id", fromExerciseId);
+  if (error) throw error;
+}
+
+/** Remove an exercise from a routine template, matched by exercise. */
+export async function removeRoutineExerciseByExercise(
+  sb: SupabaseClient,
+  routineId: string,
+  exerciseId: string,
+): Promise<void> {
+  const { error } = await sb
+    .from("routine_exercises")
+    .delete()
+    .eq("routine_id", routineId)
+    .eq("exercise_id", exerciseId);
+  if (error) throw error;
+}
+
+/** Re-position routine exercises to mirror a session's order, matched by exercise. */
+export async function reorderRoutineExercisesByExercise(
+  sb: SupabaseClient,
+  routineId: string,
+  orderedExerciseIds: string[],
+): Promise<void> {
+  const results = await Promise.all(
+    orderedExerciseIds.map((exerciseId, position) =>
+      sb
+        .from("routine_exercises")
+        .update({ position })
+        .eq("routine_id", routineId)
+        .eq("exercise_id", exerciseId),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw failed.error;
 }
 
 /* ── Exercises ───────────────────────────────────────────────────────────── */
