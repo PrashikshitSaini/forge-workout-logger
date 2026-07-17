@@ -37,6 +37,7 @@ yarn-error.log*
 # local agent memory / tooling — keep personal notes out of a public repo
 .claude/
 .playwright-mcp/
+/supabase/.temp/
 
 # vercel
 .vercel

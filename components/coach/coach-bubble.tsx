@@ -13,6 +13,7 @@ import {
   INSIGHT_TTL_MINUTES,
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { usePathname } from "next/navigation";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -24,6 +25,8 @@ const insightPrompt = (angle: string) =>
   `Angle: ${angle}. Use my real numbers from context. Max 24 words, a single line, no greeting, no emoji.`;
 
 export function CoachBubble() {
+  const pathname = usePathname();
+  const compactForWorkout = pathname === "/";
   const [sb] = useState(() => createSupabaseBrowserClient());
   const [insight, setInsight] = useState<string | null>(null);
   const [teaserVisible, setTeaserVisible] = useState(false);
@@ -147,8 +150,13 @@ export function CoachBubble() {
 
   return (
     <>
-      <div className="pointer-events-none fixed inset-x-0 bottom-20 z-40 mx-auto max-w-md px-4 pb-2">
-        {teaserVisible && insight ? (
+      <div
+        className={cn(
+          "pointer-events-none fixed inset-x-0 z-40 mx-auto max-w-md px-4 pb-2",
+          compactForWorkout ? "bottom-40" : "bottom-20",
+        )}
+      >
+        {teaserVisible && insight && !compactForWorkout ? (
           <div className="pointer-events-auto flex items-start gap-2 rounded-xl border border-accent/40 bg-surface p-3 shadow-lg">
             <Sparkles size={18} className="mt-0.5 shrink-0 text-accent" />
             <button type="button" onClick={openChat} className="min-w-0 flex-1 text-left">
@@ -196,7 +204,7 @@ export function CoachBubble() {
                   void send();
                 }
               }}
-              placeholder="Ask about your training…"
+              placeholder="Ask about training or nutrition…"
               className="h-11 flex-1 rounded-lg border border-border bg-surface-2 px-3 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             />
             <button
@@ -215,7 +223,7 @@ export function CoachBubble() {
           {messages.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-8 text-center text-muted">
               <MessageCircle size={24} />
-              <p className="text-sm">Ask anything about your lifts, volume, or what to do next.</p>
+              <p className="text-sm">Ask about your lifts, recovery, meals, or what to do next.</p>
             </div>
           ) : (
             messages.map((m, i) => (

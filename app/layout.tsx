@@ -18,7 +18,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   applicationName: APP_NAME,
-  title: { default: `${APP_NAME} — Workout Logger`, template: `%s · ${APP_NAME}` },
+  title: { default: `${APP_NAME} — Training & Nutrition`, template: `%s · ${APP_NAME}` },
   description: APP_TAGLINE,
   manifest: "/manifest.webmanifest",
   appleWebApp: {

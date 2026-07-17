@@ -9,15 +9,22 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { deleteSet, updateSet, type SetPatch } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
 
+export type RegisterSetFlush = (
+  setId: string,
+  flush: () => Promise<boolean>,
+) => () => void;
+
 /** One editable set. Optimistic local state; writes are debounced and retried. */
 export function SetRow({
   set,
   type,
   onDeleted,
+  registerFlush,
 }: {
   set: WorkoutSet;
   type: ExerciseType;
   onDeleted: (id: string) => void;
+  registerFlush?: RegisterSetFlush;
 }) {
   const sb = createSupabaseBrowserClient();
 
@@ -32,35 +39,54 @@ export function SetRow({
 
   const pending = useRef<SetPatch>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlight = useRef<Promise<boolean> | null>(null);
 
-  const flush = useCallback(async () => {
+  const flush = useCallback(async (): Promise<boolean> => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
     }
+    // If the debounce already started a request, wait for it before deciding
+    // there is nothing left to save. This makes Finish Workout a real barrier.
+    if (inFlight.current) await inFlight.current;
     const patch = pending.current;
     pending.current = {};
-    if (Object.keys(patch).length === 0) return;
-    try {
-      await updateSet(sb, set.id, patch);
-    } catch {
-      // Keep the change locally and re-queue it so the next edit retries.
-      pending.current = { ...patch, ...pending.current };
-      toast("Couldn't save — kept locally, will retry.", "error");
-    }
+    if (Object.keys(patch).length === 0) return true;
+    const request = (async () => {
+      try {
+        await updateSet(sb, set.id, patch);
+        return true;
+      } catch {
+        // Keep the change locally and re-queue it so the next edit retries.
+        pending.current = { ...patch, ...pending.current };
+        toast("Couldn't save — kept locally, will retry.", "error");
+        return false;
+      }
+    })();
+    inFlight.current = request;
+    const saved = await request;
+    if (inFlight.current === request) inFlight.current = null;
+    return saved;
   }, [sb, set.id]);
 
   const schedule = useCallback(
     (patch: SetPatch) => {
       pending.current = { ...pending.current, ...patch };
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(flush, 600);
+      timer.current = setTimeout(() => void flush(), 600);
     },
     [flush],
   );
 
-  // Flush any pending edit when the row unmounts (e.g. on Finish / navigation).
-  useEffect(() => () => void flush(), [flush]);
+  // The parent registers every row as a save barrier before finishing. We also
+  // flush on unmount so navigation never knowingly abandons a pending edit.
+  useEffect(() => {
+    const unregister = registerFlush?.(set.id, flush);
+    return () => {
+      unregister?.();
+      void flush();
+    };
+  }, [flush, registerFlush, set.id]);
 
   const toggleDone = () => {
     const next = !done;

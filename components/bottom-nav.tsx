@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, BarChart3, Dumbbell, HeartPulse, Settings } from "lucide-react";
+import { ChartNoAxesCombined, Dumbbell, HeartPulse, Settings, UtensilsCrossed } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { href: "/", label: "Log", icon: Dumbbell },
-  { href: "/history", label: "History", icon: Activity },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/meals", label: "Meals", icon: UtensilsCrossed },
+  { href: "/progress", label: "Progress", icon: ChartNoAxesCombined },
   { href: "/stats", label: "Stats", icon: HeartPulse },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;

@@ -1,7 +1,7 @@
 /** App-wide constants. Change APP_NAME / accent in one place to rebrand. */
 
 export const APP_NAME = "Forge";
-export const APP_TAGLINE = "A smart, fast workout logger.";
+export const APP_TAGLINE = "Smart workout and meal logging, without the busywork.";
 
 /** Display unit for loads. Stored values are unitless numbers; this is the label. */
 export const WEIGHT_UNIT = "lb";

@@ -19,7 +19,27 @@ const PERIODS = [
   { weeks: 12, label: "12w" },
 ] as const;
 
-export function ReportsScreen() {
+function PeriodPicker({ weeks, setWeeks }: { weeks: number; setWeeks: (weeks: number) => void }) {
+  return (
+    <div className="flex gap-1 rounded-lg border border-border bg-surface p-0.5">
+      {PERIODS.map((period) => (
+        <button
+          key={period.weeks}
+          type="button"
+          onClick={() => setWeeks(period.weeks)}
+          className={cn(
+            "rounded-md px-2.5 py-1 text-xs font-medium",
+            weeks === period.weeks ? "bg-accent text-accent-foreground" : "text-muted",
+          )}
+        >
+          {period.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const [sb] = useState(() => createSupabaseBrowserClient());
   const [weeks, setWeeks] = useState(8);
   const [loading, setLoading] = useState(true);
@@ -57,26 +77,13 @@ export function ReportsScreen() {
 
   return (
     <>
-      <PageHeader
-        title="Reports"
-        right={
-          <div className="flex gap-1 rounded-lg border border-border bg-surface p-0.5">
-            {PERIODS.map((p) => (
-              <button
-                key={p.weeks}
-                type="button"
-                onClick={() => setWeeks(p.weeks)}
-                className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium",
-                  weeks === p.weeks ? "bg-accent text-accent-foreground" : "text-muted",
-                )}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        }
-      />
+      {!embedded ? (
+        <PageHeader title="Reports" right={<PeriodPicker weeks={weeks} setWeeks={setWeeks} />} />
+      ) : (
+        <div className="flex justify-end px-4 pb-3">
+          <PeriodPicker weeks={weeks} setWeeks={setWeeks} />
+        </div>
+      )}
 
       {loading || !report ? (
         <div className="grid place-items-center py-24 text-muted">

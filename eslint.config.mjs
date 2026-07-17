@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Finder metadata generated beside files on this exFAT workspace.
+    "**/._*",
   ]),
   {
     rules: {

@@ -112,6 +112,39 @@ export interface DailyHealth {
   created_at: string;
 }
 
+export type MealType = "breakfast" | "lunch" | "dinner" | "snack" | "meal";
+export type NutritionConfidence = "high" | "medium" | "low";
+
+export interface Meal {
+  id: string;
+  user_id: string;
+  logged_on: string;
+  meal_type: MealType;
+  title: string;
+  original_input: string;
+  assumptions: string[];
+  created_at: string;
+}
+
+export interface MealItem {
+  id: string;
+  user_id: string;
+  meal_id: string;
+  name: string;
+  brand: string | null;
+  quantity: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number | null;
+  source_url: string | null;
+  source_title: string | null;
+  confidence: NutritionConfidence;
+  position: number;
+  created_at: string;
+}
+
 /* ── Composed shapes used by the UI ──────────────────────────────────────── */
 
 /** A routine joined with its ordered exercises (the day template). */
@@ -129,4 +162,16 @@ export interface SessionExerciseFull extends SessionExercise {
 export interface SessionFull extends Session {
   routine: Routine | null;
   session_exercises: SessionExerciseFull[];
+}
+
+/** A conversational meal joined with its researched nutrition items. */
+export interface MealWithItems extends Meal {
+  meal_items: MealItem[];
+}
+
+/** A preserved note from an earlier workout or exercise occurrence. */
+export interface NoteHistoryEntry {
+  id: string;
+  performed_on: string;
+  notes: string;
 }

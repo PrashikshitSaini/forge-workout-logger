@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   getActiveRegime,
   getBodyStats,
+  getMeals,
   getRecentSessions,
   getRoutinesWithExercises,
   getSetsSince,
@@ -9,6 +10,7 @@ import {
 import { buildReport } from "./reports";
 import { dayOfWeekFor, parseISODate, toISODate, todayISODate } from "./format";
 import { WEIGHT_UNIT, dayLabel } from "./constants";
+import { mealMacros } from "./nutrition";
 
 function addDays(d: Date, n: number): Date {
   const x = new Date(d);
@@ -33,11 +35,14 @@ export async function buildCoachContext(sb: SupabaseClient): Promise<string> {
   if (!regime) return "The user has no active regime yet — they haven't set up training.";
 
   const since = toISODate(addDays(new Date(), -28));
-  const [routines, recent, rows, stats] = await Promise.all([
+  const [routines, recent, rows, stats, meals] = await Promise.all([
     getRoutinesWithExercises(sb, regime.id),
     getRecentSessions(sb, 25),
     getSetsSince(sb, since),
     getBodyStats(sb, 3),
+    // Meal logging was added after the original schema. Keep the workout coach
+    // usable during a rolling deploy where migration 0005 is not applied yet.
+    getMeals(sb, 100).catch(() => []),
   ]);
 
   const lines: string[] = [];
@@ -118,6 +123,28 @@ export async function buildCoachContext(sb: SupabaseClient): Promise<string> {
     if (latest.sleep_hours != null) parts.push(`sleep ${latest.sleep_hours}h`);
     if (latest.resting_hr != null) parts.push(`resting HR ${latest.resting_hr}`);
     if (parts.length) lines.push(`Latest body stats (${latest.recorded_on}): ${parts.join(", ")}.`);
+  }
+
+  const nutritionSince = toISODate(addDays(new Date(), -6));
+  const recentMeals = meals.filter((meal) => meal.logged_on >= nutritionSince && meal.logged_on <= today);
+  if (recentMeals.length > 0) {
+    const byDay = new Map<string, typeof recentMeals>();
+    for (const meal of recentMeals) {
+      const day = byDay.get(meal.logged_on) ?? [];
+      day.push(meal);
+      byDay.set(meal.logged_on, day);
+    }
+    const perDay = [...byDay.values()].map(mealMacros);
+    const average = (key: "calories" | "protein_g") =>
+      Math.round(perDay.reduce((sum, macros) => sum + macros[key], 0) / perDay.length);
+    lines.push(
+      `Nutrition logged on ${perDay.length} of the last 7 days: average ${average("calories")} calories and ${average("protein_g")}g protein on logged days.`,
+    );
+    const todayMeals = byDay.get(today);
+    if (todayMeals?.length) {
+      const todayMacros = mealMacros(todayMeals);
+      lines.push(`Today so far: ${todayMacros.calories} calories, ${todayMacros.protein_g}g protein.`);
+    }
   }
 
   return lines.join("\n");

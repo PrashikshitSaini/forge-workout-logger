@@ -51,7 +51,7 @@ function groupByDate(points: ExerciseSetPoint[]): SessionPoint[] {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export function HistoryScreen() {
+export function HistoryScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const [sb] = useState(() => createSupabaseBrowserClient());
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
@@ -111,7 +111,7 @@ export function HistoryScreen() {
 
   return (
     <>
-      <PageHeader title="History" subtitle="Per-exercise progress — across every regime." />
+      {!embedded ? <PageHeader title="History" subtitle="Per-exercise progress — across every regime." /> : null}
 
       <div className="space-y-5 px-4">
         {loadingList ? (

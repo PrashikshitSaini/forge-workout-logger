@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { AnimatePresence, motion, Reorder } from "framer-motion";
 import {
   ArrowUpDown,
+  History,
   Check,
   CheckCircle2,
   GripVertical,
@@ -12,7 +13,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import type { Exercise, SessionExerciseFull, SessionFull } from "@/lib/types";
+import type { Exercise, NoteHistoryEntry, SessionExerciseFull, SessionFull } from "@/lib/types";
 import { ExerciseCard } from "./exercise-card";
 import { ExercisePicker } from "@/components/routines/exercise-picker";
 import { Button } from "@/components/ui/button";
@@ -21,19 +22,18 @@ import { Modal } from "@/components/ui/modal";
 import { toast } from "@/components/ui/toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
-  addSessionExercise,
-  deleteSessionExercise,
-  ensureRoutineExercise,
+  addSessionExerciseAndRoutine,
   finishSession,
-  removeRoutineExerciseByExercise,
-  reorderRoutineExercisesByExercise,
-  reorderSessionExercises,
-  swapRoutineExerciseByExercise,
-  swapSessionExercise,
+  removeSessionExerciseAndRoutine,
+  reorderSessionExercisesAndRoutine,
+  swapSessionExerciseAndRoutine,
   updateSessionNotes,
 } from "@/lib/mutations";
 import { summarizeSets } from "@/lib/set-summary";
 import { DATA_CHANGED_EVENT } from "@/lib/events";
+import { getWorkoutNoteHistory } from "@/lib/queries";
+import { NoteHistoryModal } from "./note-history-modal";
+import type { RegisterSetFlush } from "./set-row";
 
 type PickerMode = "add" | "swap";
 
@@ -56,6 +56,15 @@ export function SessionLogger({
   const [finishing, setFinishing] = useState(false);
   const [finished, setFinished] = useState(Boolean(session.finished_at));
   const [notes, setNotes] = useState(session.notes ?? "");
+  const [noteHistoryOpen, setNoteHistoryOpen] = useState(false);
+  const [noteHistoryLoading, setNoteHistoryLoading] = useState(false);
+  const [noteHistory, setNoteHistory] = useState<NoteHistoryEntry[]>([]);
+  const setFlushers = useRef(new Map<string, () => Promise<boolean>>());
+
+  const registerSetFlush: RegisterSetFlush = useCallback((setId, flush) => {
+    setFlushers.current.set(setId, flush);
+    return () => setFlushers.current.delete(setId);
+  }, []);
 
   const lastByExercise = new Map<string, SessionExerciseFull>();
   for (const se of lastSession?.session_exercises ?? []) {
@@ -81,19 +90,6 @@ export function SessionLogger({
     setSwapTarget(null);
   }
 
-  // Mirroring an edit to the day's routine (so next week reflects it) is
-  // best-effort: the session edit is the primary action and has already
-  // succeeded, so a routine hiccup must not undo what the user just did.
-  async function syncRoutine(run: (routineId: string) => Promise<void>) {
-    const routineId = session.routine_id;
-    if (!routineId) return;
-    try {
-      await run(routineId);
-    } catch {
-      toast("Saved for today, but next week's plan didn't update.", "info");
-    }
-  }
-
   async function handleAddExercise(exercise: Exercise) {
     if (exercises.some((se) => se.exercise_id === exercise.id)) {
       toast("Already in this workout.", "info");
@@ -102,19 +98,14 @@ export function SessionLogger({
     const position = exercises.length;
     const setCount = exercise.type === "cardio" ? 1 : 3;
     try {
-      // Save it to this day's routine so it's pre-filled next time…
-      if (session.routine_id) {
-        await ensureRoutineExercise(sb, session.routine_id, exercise.id, position, setCount);
-      }
-      // …and add it to the workout in progress right now.
-      const { sessionExercise, sets } = await addSessionExercise(
+      const created = await addSessionExerciseAndRoutine(
         sb,
         session.id,
         exercise.id,
         position,
         setCount,
       );
-      setExercises((prev) => [...prev, { ...sessionExercise, exercise, sets }]);
+      setExercises((prev) => [...prev, created]);
     } catch {
       toast("Couldn't add the exercise.", "error");
     }
@@ -129,22 +120,18 @@ export function SessionLogger({
       return;
     }
     const prev = exercises;
-    const fromExerciseId = target.exercise_id;
     setExercises((list) =>
       list.map((se) =>
         se.id === target.id ? { ...se, exercise_id: exercise.id, exercise } : se,
       ),
     );
     try {
-      await swapSessionExercise(sb, target.id, exercise.id);
+      await swapSessionExerciseAndRoutine(sb, target.id, exercise.id);
     } catch {
       setExercises(prev);
       toast("Couldn't replace the exercise.", "error");
       return;
     }
-    await syncRoutine((routineId) =>
-      swapRoutineExerciseByExercise(sb, routineId, fromExerciseId, exercise.id),
-    );
   }
 
   async function handleRemove(target: SessionExerciseFull) {
@@ -155,15 +142,12 @@ export function SessionLogger({
     const prev = exercises;
     setExercises((list) => list.filter((se) => se.id !== target.id));
     try {
-      await deleteSessionExercise(sb, target.id);
+      await removeSessionExerciseAndRoutine(sb, target.id);
     } catch {
       setExercises(prev);
       toast("Couldn't remove the exercise.", "error");
       return;
     }
-    await syncRoutine((routineId) =>
-      removeRoutineExerciseByExercise(sb, routineId, target.exercise_id),
-    );
   }
 
   function enterReorder() {
@@ -179,15 +163,12 @@ export function SessionLogger({
     setSavingOrder(true);
     const ordered = order;
     try {
-      await reorderSessionExercises(sb, ordered.map((se) => se.id));
+      await reorderSessionExercisesAndRoutine(sb, ordered.map((se) => se.id));
     } catch {
       toast("Couldn't save the new order.", "error");
       setSavingOrder(false);
       return;
     }
-    await syncRoutine((routineId) =>
-      reorderRoutineExercisesByExercise(sb, routineId, ordered.map((se) => se.exercise_id)),
-    );
     setExercises(ordered.map((se, i) => ({ ...se, position: i })));
     setReordering(false);
     setSavingOrder(false);
@@ -196,6 +177,11 @@ export function SessionLogger({
   async function handleFinish() {
     setFinishing(true);
     try {
+      const saved = await Promise.all([...setFlushers.current.values()].map((flush) => flush()));
+      if (saved.some((ok) => !ok)) {
+        toast("Some set changes still aren't saved. Check your connection and try again.", "error");
+        return;
+      }
       await finishSession(sb, session.id);
       setFinished(true);
       toast("Workout saved.", "success");
@@ -214,6 +200,19 @@ export function SessionLogger({
       await updateSessionNotes(sb, session.id, notes);
     } catch {
       toast("Couldn't save the note.", "error");
+    }
+  }
+
+  async function openWorkoutNoteHistory() {
+    if (!session.routine_id) return;
+    setNoteHistoryOpen(true);
+    setNoteHistoryLoading(true);
+    try {
+      setNoteHistory(await getWorkoutNoteHistory(sb, session.routine_id, session.id));
+    } catch {
+      toast("Couldn't load previous workout notes.", "error");
+    } finally {
+      setNoteHistoryLoading(false);
     }
   }
 
@@ -279,6 +278,7 @@ export function SessionLogger({
                   sessionExercise={se}
                   lastSummary={lastSummary}
                   onOpenActions={() => setActionTarget(se)}
+                  registerSetFlush={registerSetFlush}
                 />
               </motion.div>
             );
@@ -305,6 +305,15 @@ export function SessionLogger({
             rows={2}
             placeholder="Session notes…"
           />
+          {session.routine_id ? (
+            <button
+              type="button"
+              onClick={() => void openWorkoutNoteHistory()}
+              className="inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-xs text-accent hover:underline"
+            >
+              <History size={14} /> Previous workout notes
+            </button>
+          ) : null}
 
           <div className="sticky bottom-24 pb-2">
             <Button
@@ -378,6 +387,14 @@ export function SessionLogger({
           </div>
         ) : null}
       </Modal>
+
+      <NoteHistoryModal
+        open={noteHistoryOpen}
+        onClose={() => setNoteHistoryOpen(false)}
+        title="Previous workout notes"
+        entries={noteHistory}
+        loading={noteHistoryLoading}
+      />
     </div>
   );
 }

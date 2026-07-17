@@ -3,6 +3,8 @@ import type {
   BodyStat,
   DailyHealth,
   Exercise,
+  MealWithItems,
+  NoteHistoryEntry,
   Regime,
   RoutineWithExercises,
   Session,
@@ -225,6 +227,83 @@ export async function getDailyHealth(
     .returns<DailyHealth[]>();
   if (error) throw error;
   return data ?? [];
+}
+
+/** Recent conversational meal entries with their researched items. */
+export async function getMeals(
+  sb: SupabaseClient,
+  limit = 100,
+): Promise<MealWithItems[]> {
+  const { data, error } = await sb
+    .from("meals")
+    .select("*, meal_items(*)")
+    .order("logged_on", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit)
+    .returns<MealWithItems[]>();
+  if (error) throw error;
+  return (data ?? []).map((meal) => ({
+    ...meal,
+    meal_items: [...meal.meal_items].sort((a, b) => a.position - b.position),
+  }));
+}
+
+/** Dated notes previously recorded for one exercise, newest first. */
+export async function getExerciseNoteHistory(
+  sb: SupabaseClient,
+  exerciseId: string,
+  excludeSessionId?: string,
+  limit = 30,
+): Promise<NoteHistoryEntry[]> {
+  const { data, error } = await sb
+    .from("session_exercises")
+    .select("id, notes, sessions!inner(id, performed_on)")
+    .eq("exercise_id", exerciseId)
+    .not("notes", "is", null)
+    .neq("notes", "")
+    .returns<
+      { id: string; notes: string | null; sessions: { id: string; performed_on: string } }[]
+    >();
+  if (error) throw error;
+  return (data ?? [])
+    .filter(
+      (row) =>
+        row.sessions.id !== excludeSessionId && Boolean(row.notes?.trim()),
+    )
+    .map((row) => ({
+      id: row.id,
+      performed_on: row.sessions.performed_on,
+      notes: row.notes!.trim(),
+    }))
+    .sort((a, b) => b.performed_on.localeCompare(a.performed_on))
+    .slice(0, limit);
+}
+
+/** Dated whole-workout notes from earlier sessions of this routine. */
+export async function getWorkoutNoteHistory(
+  sb: SupabaseClient,
+  routineId: string,
+  excludeSessionId?: string,
+  limit = 30,
+): Promise<NoteHistoryEntry[]> {
+  let query = sb
+    .from("sessions")
+    .select("id, performed_on, notes")
+    .eq("routine_id", routineId)
+    .not("notes", "is", null)
+    .neq("notes", "")
+    .order("performed_on", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit + 1);
+  if (excludeSessionId) query = query.neq("id", excludeSessionId);
+  const { data, error } = await query.returns<
+    { id: string; performed_on: string; notes: string | null }[]
+  >();
+  if (error) throw error;
+  return (data ?? [])
+    .filter((row) => Boolean(row.notes?.trim()))
+    .slice(0, limit)
+    .map((row) => ({ id: row.id, performed_on: row.performed_on, notes: row.notes!.trim() }));
 }
 
 /** All sets for a date range, joined to exercise + session, for reports. */

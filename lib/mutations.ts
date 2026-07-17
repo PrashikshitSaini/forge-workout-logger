@@ -7,7 +7,7 @@ import type {
   Regime,
   Routine,
   RoutineExercise,
-  SessionExercise,
+  SessionExerciseFull,
   WorkoutSet,
 } from "./types";
 
@@ -92,71 +92,62 @@ export async function updateSessionExerciseNotes(
   if (error) throw error;
 }
 
-/** Add an exercise to an in-progress session, with `setCount` empty sets. */
-export async function addSessionExercise(
+/** Atomically add an exercise to today and the source routine, including sets. */
+export async function addSessionExerciseAndRoutine(
   sb: SupabaseClient,
   sessionId: string,
   exerciseId: string,
   position: number,
-  setCount = 3,
-): Promise<{ sessionExercise: SessionExercise; sets: WorkoutSet[] }> {
-  const { data: seData, error } = await sb
+  setCount: number,
+): Promise<SessionExerciseFull> {
+  const { data: id, error } = await sb.rpc("add_session_exercise_and_routine", {
+    p_session_id: sessionId,
+    p_exercise_id: exerciseId,
+    p_position: position,
+    p_set_count: setCount,
+  });
+  if (error) throw error;
+  const { data, error: readError } = await sb
     .from("session_exercises")
-    .insert({ session_id: sessionId, exercise_id: exerciseId, position })
-    .select("*")
+    .select("*, exercise:exercises(*), sets(*)")
+    .eq("id", id as string)
     .single();
-  if (error) throw error;
-  const sessionExercise = seData as SessionExercise;
-
-  const rows = Array.from({ length: Math.max(1, setCount) }, (_, i) => ({
-    session_exercise_id: sessionExercise.id,
-    set_number: i + 1,
-  }));
-  const { data: setsData, error: setErr } = await sb.from("sets").insert(rows).select("*");
-  if (setErr) throw setErr;
-
-  return { sessionExercise, sets: (setsData ?? []) as WorkoutSet[] };
+  if (readError) throw readError;
+  const full = data as SessionExerciseFull;
+  full.sets.sort((a, b) => a.set_number - b.set_number);
+  return full;
 }
 
-/** Remove an exercise from a session. The FK cascade deletes its sets too. */
-export async function deleteSessionExercise(
-  sb: SupabaseClient,
-  sessionExerciseId: string,
-): Promise<void> {
-  const { error } = await sb.from("session_exercises").delete().eq("id", sessionExerciseId);
-  if (error) throw error;
-}
-
-/**
- * Replace the exercise on a session row, keeping its logged sets intact — they
- * reference the session_exercise row, not the exercise, so swapping (e.g.
- * "Incline Bench Press" → "Incline Bench Press Machine") preserves everything
- * already entered for it.
- */
-export async function swapSessionExercise(
+export async function swapSessionExerciseAndRoutine(
   sb: SupabaseClient,
   sessionExerciseId: string,
   newExerciseId: string,
 ): Promise<void> {
-  const { error } = await sb
-    .from("session_exercises")
-    .update({ exercise_id: newExerciseId })
-    .eq("id", sessionExerciseId);
+  const { error } = await sb.rpc("swap_session_exercise_and_routine", {
+    p_session_exercise_id: sessionExerciseId,
+    p_new_exercise_id: newExerciseId,
+  });
   if (error) throw error;
 }
 
-/** Persist a new order for a session's exercises (position = array index). */
-export async function reorderSessionExercises(
+export async function removeSessionExerciseAndRoutine(
+  sb: SupabaseClient,
+  sessionExerciseId: string,
+): Promise<void> {
+  const { error } = await sb.rpc("remove_session_exercise_and_routine", {
+    p_session_exercise_id: sessionExerciseId,
+  });
+  if (error) throw error;
+}
+
+export async function reorderSessionExercisesAndRoutine(
   sb: SupabaseClient,
   orderedIds: string[],
 ): Promise<void> {
-  const results = await Promise.all(
-    orderedIds.map((id, position) =>
-      sb.from("session_exercises").update({ position }).eq("id", id),
-    ),
-  );
-  const failed = results.find((r) => r.error);
-  if (failed?.error) throw failed.error;
+  const { error } = await sb.rpc("reorder_session_exercises_and_routine", {
+    p_ordered_ids: orderedIds,
+  });
+  if (error) throw error;
 }
 
 /* ── Regimes ─────────────────────────────────────────────────────────────── */
@@ -244,25 +235,6 @@ export async function addRoutineExercise(
   return data as RoutineExercise;
 }
 
-/** Add an exercise to a routine template only if it isn't already there. */
-export async function ensureRoutineExercise(
-  sb: SupabaseClient,
-  routineId: string,
-  exerciseId: string,
-  position: number,
-  targetSets = 3,
-): Promise<void> {
-  const { data: existing, error } = await sb
-    .from("routine_exercises")
-    .select("id")
-    .eq("routine_id", routineId)
-    .eq("exercise_id", exerciseId)
-    .maybeSingle();
-  if (error) throw error;
-  if (existing) return;
-  await addRoutineExercise(sb, routineId, exerciseId, position, targetSets, null);
-}
-
 export async function updateRoutineExercise(
   sb: SupabaseClient,
   id: string,
@@ -288,62 +260,6 @@ export async function swapRoutineExercise(
     .update({ exercise_id: newExerciseId })
     .eq("id", routineExerciseId);
   if (error) throw error;
-}
-
-/* ── Routine write-through (keep a day's template in sync with live edits) ──
- * A session starts as a 1:1 copy of its routine, and every in-workout edit is
- * mirrored back here, so the routine can be matched by exercise_id. Each helper
- * is a safe no-op when the routine doesn't carry that exercise (e.g. it was
- * added ad-hoc after the session began, or the session had no routine).
- */
-
-/** Swap an exercise in a routine template, matched by its current exercise. */
-export async function swapRoutineExerciseByExercise(
-  sb: SupabaseClient,
-  routineId: string,
-  fromExerciseId: string,
-  toExerciseId: string,
-): Promise<void> {
-  if (fromExerciseId === toExerciseId) return;
-  const { error } = await sb
-    .from("routine_exercises")
-    .update({ exercise_id: toExerciseId })
-    .eq("routine_id", routineId)
-    .eq("exercise_id", fromExerciseId);
-  if (error) throw error;
-}
-
-/** Remove an exercise from a routine template, matched by exercise. */
-export async function removeRoutineExerciseByExercise(
-  sb: SupabaseClient,
-  routineId: string,
-  exerciseId: string,
-): Promise<void> {
-  const { error } = await sb
-    .from("routine_exercises")
-    .delete()
-    .eq("routine_id", routineId)
-    .eq("exercise_id", exerciseId);
-  if (error) throw error;
-}
-
-/** Re-position routine exercises to mirror a session's order, matched by exercise. */
-export async function reorderRoutineExercisesByExercise(
-  sb: SupabaseClient,
-  routineId: string,
-  orderedExerciseIds: string[],
-): Promise<void> {
-  const results = await Promise.all(
-    orderedExerciseIds.map((exerciseId, position) =>
-      sb
-        .from("routine_exercises")
-        .update({ position })
-        .eq("routine_id", routineId)
-        .eq("exercise_id", exerciseId),
-    ),
-  );
-  const failed = results.find((r) => r.error);
-  if (failed?.error) throw failed.error;
 }
 
 /* ── Exercises ───────────────────────────────────────────────────────────── */
@@ -528,5 +444,13 @@ export async function setDailyHealth(
 /** Delete one day's watch row. RLS scopes the delete to the signed-in user. */
 export async function deleteDailyHealth(sb: SupabaseClient, recordedOn: string): Promise<void> {
   const { error } = await sb.from("daily_health").delete().eq("recorded_on", recordedOn);
+  if (error) throw error;
+}
+
+/* ── Meals ──────────────────────────────────────────────────────────────── */
+
+/** Delete a meal; the database cascade removes its itemized nutrition rows. */
+export async function deleteMeal(sb: SupabaseClient, mealId: string): Promise<void> {
+  const { error } = await sb.from("meals").delete().eq("id", mealId);
   if (error) throw error;
 }

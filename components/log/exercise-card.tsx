@@ -1,27 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { MoreVertical, Plus, StickyNote } from "lucide-react";
-import type { SessionExerciseFull, WorkoutSet } from "@/lib/types";
-import { SetRow } from "./set-row";
+import { History, MoreVertical, Plus, StickyNote } from "lucide-react";
+import type { NoteHistoryEntry, SessionExerciseFull, WorkoutSet } from "@/lib/types";
+import { SetRow, type RegisterSetFlush } from "./set-row";
 import { Textarea } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { addSet, updateSessionExerciseNotes } from "@/lib/mutations";
 import { WEIGHT_UNIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { getExerciseNoteHistory } from "@/lib/queries";
+import { NoteHistoryModal } from "./note-history-modal";
 
 export function ExerciseCard({
   index,
   sessionExercise,
   lastSummary,
   onOpenActions,
+  registerSetFlush,
 }: {
   index: number;
   sessionExercise: SessionExerciseFull;
   lastSummary?: string;
   /** Opens the replace / remove action sheet for this exercise. */
   onOpenActions: () => void;
+  registerSetFlush?: RegisterSetFlush;
 }) {
   const sb = createSupabaseBrowserClient();
   const ex = sessionExercise.exercise;
@@ -31,6 +35,9 @@ export function ExerciseCard({
   const [notes, setNotes] = useState(sessionExercise.notes ?? "");
   const [showNotes, setShowNotes] = useState(Boolean(sessionExercise.notes));
   const [adding, setAdding] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [history, setHistory] = useState<NoteHistoryEntry[]>([]);
 
   async function handleAddSet() {
     setAdding(true);
@@ -58,6 +65,18 @@ export function ExerciseCard({
       await updateSessionExerciseNotes(sb, sessionExercise.id, notes);
     } catch {
       toast("Couldn't save the note.", "error");
+    }
+  }
+
+  async function openHistory() {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      setHistory(await getExerciseNoteHistory(sb, ex.id, sessionExercise.session_id));
+    } catch {
+      toast("Couldn't load previous notes.", "error");
+    } finally {
+      setHistoryLoading(false);
     }
   }
 
@@ -110,13 +129,19 @@ export function ExerciseCard({
           <p className="px-1 py-2 text-sm text-muted-foreground">No sets — add one below.</p>
         ) : (
           sets.map((s) => (
-            <SetRow key={s.id} set={s} type={ex.type} onDeleted={handleDeleted} />
+            <SetRow
+              key={s.id}
+              set={s}
+              type={ex.type}
+              onDeleted={handleDeleted}
+              registerFlush={registerSetFlush}
+            />
           ))
         )}
       </div>
 
       {showNotes ? (
-        <div className="px-3 pb-3">
+        <div className="space-y-2 px-3 pb-3">
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -124,6 +149,13 @@ export function ExerciseCard({
             rows={2}
             placeholder="Notes — form cues, pain, tempo…"
           />
+          <button
+            type="button"
+            onClick={() => void openHistory()}
+            className="inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-xs text-accent hover:underline"
+          >
+            <History size={14} /> Previous notes
+          </button>
         </div>
       ) : null}
 
@@ -137,6 +169,14 @@ export function ExerciseCard({
           <Plus size={16} /> Add set
         </button>
       </div>
+
+      <NoteHistoryModal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title={`${ex.name} notes`}
+        entries={history}
+        loading={historyLoading}
+      />
     </section>
   );
 }
