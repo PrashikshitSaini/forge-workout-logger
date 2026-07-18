@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, Loader2, Search, Sparkles, Trash2 } from "lucide-react";
+import { ExternalLink, Loader2, Pencil, Search, Sparkles, Trash2 } from "lucide-react";
 import type { MealWithItems } from "@/lib/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getMeals } from "@/lib/queries";
@@ -19,6 +19,7 @@ interface AnalyzeResponse {
   error?: string;
   title?: string;
   totals?: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
+  duplicate?: { meal_id: string; title: string };
 }
 
 export function MealsScreen() {
@@ -29,6 +30,8 @@ export function MealsScreen() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [updatingMeal, setUpdatingMeal] = useState<MealWithItems | null>(null);
+  const [duplicate, setDuplicate] = useState<NonNullable<AnalyzeResponse["duplicate"]> | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,28 +60,47 @@ export function MealsScreen() {
   );
   const totals = useMemo(() => mealMacros(dayMeals), [dayMeals]);
 
-  async function handleAnalyze() {
+  async function handleAnalyze(options: { mealId?: string; allowDuplicate?: boolean } = {}) {
     const mealText = text.trim();
     if (!mealText || analyzing) return;
     setAnalyzing(true);
+    setDuplicate(null);
     try {
       const res = await fetch("/api/meals/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: mealText, logged_on: loggedOn }),
+        body: JSON.stringify({
+          text: mealText,
+          logged_on: loggedOn,
+          ...(options.mealId ? { meal_id: options.mealId } : {}),
+          ...(options.allowDuplicate ? { allow_duplicate: true } : {}),
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as AnalyzeResponse;
+      if (res.status === 409 && json.duplicate) {
+        setDuplicate(json.duplicate);
+        return;
+      }
       if (!res.ok) throw new Error(json.error || "Couldn't research that meal.");
       setText("");
+      setUpdatingMeal(null);
       await load();
       window.dispatchEvent(new Event(DATA_CHANGED_EVENT));
       const calories = json.totals?.calories ? ` · ${Math.round(json.totals.calories)} cal` : "";
-      toast(`${json.title || "Meal"} logged${calories}.`, "success");
+      toast(`${json.title || "Meal"} ${options.mealId ? "updated" : "logged"}${calories}.`, "success");
     } catch (err) {
       toast(err instanceof Error ? err.message : "Couldn't research that meal.", "error");
     } finally {
       setAnalyzing(false);
     }
+  }
+
+  function handleEdit(meal: MealWithItems) {
+    setUpdatingMeal(meal);
+    setDuplicate(null);
+    setLoggedOn(meal.logged_on);
+    setText(meal.original_input);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function handleDelete(meal: MealWithItems) {
@@ -117,18 +139,24 @@ export function MealsScreen() {
               type="date"
               max={todayISODate()}
               value={loggedOn}
-              onChange={(event) => setLoggedOn(event.target.value || todayISODate())}
+              onChange={(event) => {
+                setLoggedOn(event.target.value || todayISODate());
+                setDuplicate(null);
+              }}
               className="h-11 w-full rounded-lg border border-border bg-surface-2 px-3 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             />
           </div>
 
           <Textarea
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) => {
+              setText(event.target.value);
+              setDuplicate(null);
+            }}
             onKeyDown={(event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
                 event.preventDefault();
-                void handleAnalyze();
+                void handleAnalyze(updatingMeal ? { mealId: updatingMeal.id } : {});
               }
             }}
             rows={5}
@@ -136,9 +164,42 @@ export function MealsScreen() {
             placeholder="I made a bowl with 100 g cooked Great Value rice, 1 cup Great Value black beans, and 150 g plant-based ground beef…"
           />
 
-          <Button className="w-full" size="lg" onClick={handleAnalyze} disabled={!text.trim() || analyzing}>
+          {updatingMeal ? (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm">
+              <p className="min-w-0 truncate">Updating <span className="font-medium">{updatingMeal.title}</span></p>
+              <button
+                type="button"
+                onClick={() => {
+                  setUpdatingMeal(null);
+                  setText("");
+                }}
+                className="shrink-0 text-xs font-medium text-accent hover:underline"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
+
+          {duplicate ? (
+            <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3">
+              <p className="text-sm">This looks similar to <span className="font-medium">{duplicate.title}</span>, already logged today.</p>
+              <p className="text-xs text-muted-foreground">Choose how to save it. Forge will never merge meals automatically.</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="secondary" size="sm" onClick={() => void handleAnalyze({ mealId: duplicate.meal_id })} disabled={analyzing}>
+                  Update existing
+                </Button>
+                <Button size="sm" onClick={() => void handleAnalyze({ allowDuplicate: true })} disabled={analyzing}>
+                  Log another
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <Button className="w-full" size="lg" onClick={() => void handleAnalyze(updatingMeal ? { mealId: updatingMeal.id } : {})} disabled={!text.trim() || analyzing}>
             {analyzing ? (
               <><Loader2 size={18} className="animate-spin" /> Researching & verifying…</>
+            ) : updatingMeal ? (
+              <><Search size={18} /> Re-research & update meal</>
             ) : (
               <><Search size={18} /> Research & verify meal</>
             )}
@@ -174,6 +235,7 @@ export function MealsScreen() {
                 key={meal.id}
                 meal={meal}
                 deleting={deletingId === meal.id}
+                onEdit={() => handleEdit(meal)}
                 onDelete={() => void handleDelete(meal)}
               />
             ))
@@ -254,10 +316,12 @@ function MacroLegend({
 function MealCard({
   meal,
   deleting,
+  onEdit,
   onDelete,
 }: {
   meal: MealWithItems;
   deleting: boolean;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const macros = mealMacros([meal]);
@@ -271,9 +335,14 @@ function MealCard({
             <span className="tabular">{macros.calories}</span> cal · <span className="tabular">{formatMacro(macros.protein_g)}</span>g protein
           </p>
         </div>
-        <Button variant="ghost" size="icon" aria-label="Delete meal" onClick={onDelete} disabled={deleting}>
-          {deleting ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />}
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button variant="ghost" size="icon" aria-label="Edit and re-research meal" onClick={onEdit} disabled={deleting}>
+            <Pencil size={16} />
+          </Button>
+          <Button variant="ghost" size="icon" aria-label="Delete meal" onClick={onDelete} disabled={deleting}>
+            {deleting ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />}
+          </Button>
+        </div>
       </div>
 
       <div className="border-t border-border">

@@ -127,8 +127,33 @@ function numbersIn(value: string): number[] {
 }
 
 function numericFactAppears(value: number, evidence: string, tolerance: number): boolean {
-  if (value === 0) return true;
   return numbersIn(evidence).some((parsed) => Math.abs(parsed - value) <= tolerance);
+}
+
+type RequiredMacro = "calories" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g";
+
+function macroFactAppears(
+  macro: RequiredMacro,
+  value: number,
+  evidence: string,
+  tolerance: number,
+): boolean {
+  const labels: Record<RequiredMacro, string> = {
+    calories: "calories?",
+    protein_g: "protein",
+    carbs_g: "(?:total\\s+)?(?:carbohydrate|carbs?)",
+    fat_g: "(?:total\\s+)?fat",
+    fiber_g: "(?:dietary\\s+)?fiber",
+  };
+  const pattern = new RegExp(
+    `(?:^|\\s)${labels[macro]}\\s+(\\d[\\d,]*(?:\\.\\d+)?(?:\\s*\\/\\s*\\d+(?:\\.\\d+)?)?)`,
+    "gu",
+  );
+
+  return [...normalizeEvidence(evidence).matchAll(pattern)].some((match) => {
+    const [fact] = numbersIn(match[1]);
+    return fact != null && Math.abs(fact - value) <= tolerance;
+  });
 }
 
 function servingUnitAppears(unit: ResearchItem["source_unit"], evidence: string): boolean {
@@ -180,13 +205,14 @@ export function verifyAndScaleItem(
     throw new NutritionVerificationError(`The cited label evidence could not be verified for ${item.name}.`);
   }
 
-  const facts: Array<[number, number]> = [
-    [item.label.calories, 2],
-    [item.label.protein_g, 0.6],
-    [item.label.carbs_g, 0.6],
-    [item.label.fat_g, 0.6],
+  const facts: Array<[RequiredMacro, number, number]> = [
+    ["calories", item.label.calories, 2],
+    ["protein_g", item.label.protein_g, 0.6],
+    ["carbs_g", item.label.carbs_g, 0.6],
+    ["fat_g", item.label.fat_g, 0.6],
   ];
-  if (!facts.every(([value, tolerance]) => numericFactAppears(value, item.evidence, tolerance))) {
+  if (item.label.fiber_g != null) facts.push(["fiber_g", item.label.fiber_g, 0.6]);
+  if (!facts.every(([macro, value, tolerance]) => macroFactAppears(macro, value, item.evidence, tolerance))) {
     throw new NutritionVerificationError(`The source excerpt does not support all macros for ${item.name}.`);
   }
   if (!numericFactAppears(item.source_amount, item.evidence, 0.02)) {

@@ -72,6 +72,19 @@ test("rejects macros whose numbers are missing from the source excerpt", () => {
   );
 });
 
+test("rejects a returned source that contains matching numbers without nutrition facts", () => {
+  const unsupportedCitation = {
+    ...citation,
+    content: "Serving size 1/2 cup. Calories 110. 7g. 20g. 0.5g. 6g.",
+  };
+  const unsupportedItem = {
+    ...item,
+    evidence: unsupportedCitation.content,
+  };
+
+  assert.throws(() => verifyAndScaleItem(unsupportedItem, [unsupportedCitation]), NutritionVerificationError);
+});
+
 test("rejects a serving conversion whose units do not match", () => {
   assert.throws(
     () => verifyAndScaleItem({ ...item, consumed_unit: "g" }, [citation]),

@@ -4,6 +4,7 @@ import { APP_NAME } from "@/lib/constants";
 import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { findSimilarMeal } from "@/lib/meal-duplicates";
 import {
   NutritionVerificationError,
   ResearchAnalysisSchema,
@@ -17,6 +18,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const RequestSchema = z.object({
   text: z.string().trim().min(3).max(5000),
   logged_on: z.string().regex(DATE_RE),
+  meal_id: z.string().uuid().optional(),
+  allow_duplicate: z.boolean().optional(),
 });
 
 const SYSTEM_PROMPT = `You are the nutrition research engine inside ${APP_NAME}.
@@ -200,14 +203,37 @@ export async function POST(req: Request) {
     const analysis = ResearchAnalysisSchema.parse(extractJson(content));
     const items = verifyAndScaleAnalysis(analysis, extractCitations(message?.annotations));
 
-    const { data: mealId, error: saveError } = await supabase.rpc("create_meal", {
+    if (!body.meal_id && !body.allow_duplicate) {
+      const { data: existingMeals, error: existingMealsError } = await supabase
+        .from("meals")
+        .select("id, title, original_input")
+        .eq("logged_on", body.logged_on)
+        .returns<{ id: string; title: string; original_input: string }[]>();
+      if (existingMealsError) throw existingMealsError;
+
+      const duplicate = findSimilarMeal(analysis.title, body.text, existingMeals ?? []);
+      if (duplicate) {
+        return NextResponse.json(
+          {
+            error: "This looks similar to a meal already logged today.",
+            duplicate: { meal_id: duplicate.id, title: duplicate.title },
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    const mealMutation = body.meal_id ? "replace_meal" : "create_meal";
+    const mutationParameters = {
       p_logged_on: body.logged_on,
       p_meal_type: analysis.meal_type,
       p_title: analysis.title,
       p_original_input: body.text,
       p_assumptions: analysis.assumptions,
       p_items: items,
-    });
+      ...(body.meal_id ? { p_meal_id: body.meal_id } : {}),
+    };
+    const { data: mealId, error: saveError } = await supabase.rpc(mealMutation, mutationParameters);
     if (saveError) throw saveError;
 
     return NextResponse.json({
@@ -218,12 +244,12 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("Meal analysis failed", err);
-    const missingMigration = err instanceof Error && /create_meal|schema cache/i.test(err.message);
+    const missingMigration = err instanceof Error && /create_meal|replace_meal|schema cache/i.test(err.message);
     const verificationFailed = err instanceof NutritionVerificationError;
     return NextResponse.json(
       {
         error: missingMigration
-          ? "Meal storage is not ready. Apply migration 0005 first."
+          ? "Meal storage is not ready. Apply migrations 0005 and 0008 first."
           : verificationFailed
             ? "I found results, but couldn't verify every nutrition label. Add the exact product or serving details and try again."
           : "I couldn't turn that into a reliable meal. Add quantities and try once more.",
