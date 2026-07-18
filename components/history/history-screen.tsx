@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search, X } from "lucide-react";
 import type { Exercise } from "@/lib/types";
 import { PageHeader } from "@/components/ui/page-header";
-import { Select } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { LineChart } from "@/components/charts/line-chart";
 import { toast } from "@/components/ui/toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -55,6 +55,8 @@ export function HistoryScreen({ embedded = false }: { embedded?: boolean } = {})
   const [sb] = useState(() => createSupabaseBrowserClient());
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
+  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [points, setPoints] = useState<SessionPoint[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -63,7 +65,10 @@ export function HistoryScreen({ embedded = false }: { embedded?: boolean } = {})
     getExercises(sb)
       .then((list) => {
         setExercises(list);
-        if (list.length > 0) setSelectedId(list[0].id);
+        if (list.length > 0) {
+          setSelectedId(list[0].id);
+          setQuery(list[0].name);
+        }
       })
       .catch(() => toast("Couldn't load exercises.", "error"))
       .finally(() => setLoadingList(false));
@@ -73,6 +78,26 @@ export function HistoryScreen({ embedded = false }: { embedded?: boolean } = {})
     () => exercises.find((e) => e.id === selectedId) ?? null,
     [exercises, selectedId],
   );
+
+  const filteredExercises = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    const matches = needle
+      ? exercises.filter((exercise) => exercise.name.toLocaleLowerCase().includes(needle))
+      : [...exercises];
+    return matches
+      .sort((a, b) => {
+        const aStarts = needle && a.name.toLocaleLowerCase().startsWith(needle) ? 0 : 1;
+        const bStarts = needle && b.name.toLocaleLowerCase().startsWith(needle) ? 0 : 1;
+        return aStarts - bStarts || a.name.localeCompare(b.name);
+      })
+      .slice(0, 8);
+  }, [exercises, query]);
+
+  function chooseExercise(exercise: Exercise) {
+    setSelectedId(exercise.id);
+    setQuery(exercise.name);
+    setSearchOpen(false);
+  }
 
   const loadHistory = useCallback(async () => {
     if (!selectedId) return;
@@ -122,13 +147,91 @@ export function HistoryScreen({ embedded = false }: { embedded?: boolean } = {})
           <p className="py-12 text-center text-sm text-muted">Log a workout to see history.</p>
         ) : (
           <>
-            <Select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
-              {exercises.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                </option>
-              ))}
-            </Select>
+            <div className="relative">
+              <Search
+                size={17}
+                className="pointer-events-none absolute left-3 top-3.5 z-10 text-muted-foreground"
+              />
+              <Input
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setSearchOpen(true);
+                }}
+                onFocus={(event) => {
+                  event.currentTarget.select();
+                  setSearchOpen(true);
+                }}
+                onBlur={() => window.setTimeout(() => setSearchOpen(false), 150)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setQuery(selected?.name ?? "");
+                    setSearchOpen(false);
+                    event.currentTarget.blur();
+                  }
+                  if (event.key === "Enter" && searchOpen && filteredExercises[0]) {
+                    event.preventDefault();
+                    chooseExercise(filteredExercises[0]);
+                  }
+                }}
+                role="combobox"
+                aria-label="Search exercise history"
+                aria-expanded={searchOpen}
+                aria-controls="exercise-history-results"
+                aria-autocomplete="list"
+                placeholder="Search exercises…"
+                className="pl-9 pr-10"
+              />
+              {query ? (
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setQuery("");
+                    setSearchOpen(true);
+                  }}
+                  aria-label="Clear exercise search"
+                  className="absolute right-1 top-1 grid h-9 w-9 place-items-center rounded-md text-muted-foreground hover:text-foreground"
+                >
+                  <X size={16} />
+                </button>
+              ) : null}
+
+              {searchOpen ? (
+                <div
+                  id="exercise-history-results"
+                  role="listbox"
+                  className="absolute inset-x-0 top-12 z-30 max-h-72 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-2xl"
+                >
+                  {filteredExercises.length === 0 ? (
+                    <p className="px-3 py-4 text-center text-sm text-muted">No matching exercises.</p>
+                  ) : (
+                    filteredExercises.map((exercise) => (
+                      <button
+                        key={exercise.id}
+                        type="button"
+                        role="option"
+                        aria-selected={exercise.id === selectedId}
+                        onClick={() => chooseExercise(exercise)}
+                        className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-2"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">{exercise.name}</span>
+                          <span className="block truncate text-xs text-muted">
+                            {[exercise.equipment, exercise.muscle_group].filter(Boolean).join(" · ") || "Exercise"}
+                          </span>
+                        </span>
+                        {exercise.id === selectedId ? (
+                          <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-accent">
+                            Selected
+                          </span>
+                        ) : null}
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </div>
 
             {loadingHistory ? (
               <div className="grid place-items-center py-16 text-muted">

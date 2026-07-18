@@ -7,7 +7,7 @@ import { LineChart } from "@/components/charts/line-chart";
 import { HBars, VBars } from "@/components/charts/bars";
 import { toast } from "@/components/ui/toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getBodyStats, getSetsSince } from "@/lib/queries";
+import { getDailyHealth, getSetsSince } from "@/lib/queries";
 import { buildReport, mondayOf, type Report } from "@/lib/reports";
 import { parseISODate, toISODate } from "@/lib/format";
 import { WEIGHT_UNIT } from "@/lib/constants";
@@ -53,15 +53,15 @@ export function ReportsScreen({ embedded = false }: { embedded?: boolean } = {})
       firstMonday.setDate(firstMonday.getDate() - (weeks - 1) * 7);
       const since = toISODate(firstMonday);
 
-      const [rows, stats] = await Promise.all([getSetsSince(sb, since), getBodyStats(sb, 365)]);
+      const [rows, health] = await Promise.all([getSetsSince(sb, since), getDailyHealth(sb, 365)]);
       setReport(buildReport(rows, weeks));
       setBodyweight(
-        stats
-          .filter((s) => s.bodyweight != null && s.recorded_on >= since)
+        health
+          .filter((entry) => entry.bodyweight != null && entry.recorded_on >= since)
           .sort((a, b) => a.recorded_on.localeCompare(b.recorded_on))
-          .map((s) => {
-            const d = parseISODate(s.recorded_on);
-            return { label: `${d.getMonth() + 1}/${d.getDate()}`, value: s.bodyweight as number };
+          .map((entry) => {
+            const d = parseISODate(entry.recorded_on);
+            return { label: `${d.getMonth() + 1}/${d.getDate()}`, value: entry.bodyweight as number };
           }),
       );
     } catch {

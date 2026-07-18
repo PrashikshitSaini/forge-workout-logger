@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { upsertDailyHealth } from "@/lib/mutations";
 import { rateLimit } from "@/lib/rate-limit";
-import { APP_NAME } from "@/lib/constants";
+import { APP_NAME, WEIGHT_UNIT } from "@/lib/constants";
 
 // node:crypto + the service-role client require the Node.js runtime.
 export const runtime = "nodejs";
@@ -34,6 +34,7 @@ const int = (max: number) => z.coerce.number().int().min(0).max(max).nullable().
 const num = (max: number) => z.coerce.number().min(0).max(max).nullable().optional();
 
 const MetricsSchema = z.object({
+  bodyweight: num(1_000),
   steps: int(200_000),
   active_kcal: num(30_000),
   total_kcal: num(30_000),
@@ -71,6 +72,7 @@ function serverToday(): string {
 const NORMALIZE_PROMPT = `You convert messy health/fitness data into strict JSON.
 Output ONLY a JSON object — no prose, no markdown, no code fences.
 Allowed keys (all optional, omit any you cannot determine):
+  bodyweight     number, body weight in ${WEIGHT_UNIT}
   steps          integer, whole-day step count
   active_kcal    number, active calories burned
   total_kcal     number, total calories burned
@@ -78,7 +80,7 @@ Allowed keys (all optional, omit any you cannot determine):
   sleep_minutes  integer, total sleep in MINUTES
   resting_hr     integer, resting heart rate (bpm)
   avg_hr         integer, average heart rate (bpm)
-Convert units as needed (km→meters, hours→minutes). Never invent values.`;
+Convert units as needed (weight→${WEIGHT_UNIT}, km→meters, hours→minutes). Never invent values.`;
 
 /** Ask the LLM to turn a raw blob into metric JSON. Validated by the caller. */
 async function normalizeRaw(raw: string): Promise<Metrics> {

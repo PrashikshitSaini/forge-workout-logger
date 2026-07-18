@@ -156,12 +156,7 @@ export function MealsScreen() {
             </div>
             <p className="text-xs text-muted-foreground">{dayMeals.length} {dayMeals.length === 1 ? "meal" : "meals"}</p>
           </div>
-          <div className="grid grid-cols-4 gap-2">
-            <Macro label="Calories" value={Math.round(totals.calories).toString()} />
-            <Macro label="Protein" value={formatMacro(totals.protein_g)} unit="g" />
-            <Macro label="Carbs" value={formatMacro(totals.carbs_g)} unit="g" />
-            <Macro label="Fat" value={formatMacro(totals.fat_g)} unit="g" />
-          </div>
+          <MacroBreakdown totals={totals} />
         </section>
 
         <section className="space-y-3 pb-4">
@@ -193,13 +188,65 @@ function formatMacro(value: number): string {
   return Number.isInteger(value) ? value.toString() : value.toFixed(1);
 }
 
-function Macro({ label, value, unit }: { label: string; value: string; unit?: string }) {
+function MacroBreakdown({
+  totals,
+}: {
+  totals: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
+}) {
+  const proteinCalories = totals.protein_g * 4;
+  const carbCalories = totals.carbs_g * 4;
+  const fatCalories = totals.fat_g * 9;
+  const macroCalories = proteinCalories + carbCalories + fatCalories;
+  const proteinPct = macroCalories > 0 ? (proteinCalories / macroCalories) * 100 : 0;
+  const carbPct = macroCalories > 0 ? (carbCalories / macroCalories) * 100 : 0;
+  const proteinEnd = proteinPct;
+  const carbEnd = proteinPct + carbPct;
+  const chartBackground =
+    macroCalories > 0
+      ? `conic-gradient(var(--accent) 0 ${proteinEnd}%, #60a5fa ${proteinEnd}% ${carbEnd}%, var(--warning) ${carbEnd}% 100%)`
+      : "var(--surface-2)";
+
   return (
-    <div className="min-w-0 rounded-xl border border-border bg-surface px-2 py-3 text-center">
-      <p className="tabular truncate text-lg font-semibold leading-none">
-        {value}<span className="text-[10px] font-normal text-muted">{unit}</span>
-      </p>
-      <p className="mt-1 truncate text-[10px] text-muted">{label}</p>
+    <div className="flex items-center gap-5 rounded-xl border border-border bg-surface p-4">
+      <div
+        role="img"
+        aria-label={`Macro calories: ${Math.round(proteinPct)} percent protein, ${Math.round(carbPct)} percent carbs, ${Math.round(100 - proteinPct - carbPct)} percent fat`}
+        className="relative grid h-32 w-32 shrink-0 place-items-center rounded-full"
+        style={{ background: chartBackground }}
+      >
+        <div className="grid h-20 w-20 place-items-center rounded-full bg-surface text-center">
+          <div>
+            <p className="tabular text-xl font-semibold leading-none">{Math.round(totals.calories)}</p>
+            <p className="mt-1 text-[10px] uppercase tracking-wide text-muted">calories</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="min-w-0 flex-1 space-y-3">
+        <MacroLegend color="bg-accent" label="Protein" value={totals.protein_g} />
+        <MacroLegend color="bg-blue-400" label="Carbs" value={totals.carbs_g} />
+        <MacroLegend color="bg-warning" label="Fat" value={totals.fat_g} />
+      </div>
+    </div>
+  );
+}
+
+function MacroLegend({
+  color,
+  label,
+  value,
+}: {
+  color: string;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color}`} />
+      <span className="min-w-0 flex-1 truncate text-xs text-muted">{label}</span>
+      <span className="tabular text-sm font-medium">
+        {formatMacro(value)}<span className="text-[10px] font-normal text-muted">g</span>
+      </span>
     </div>
   );
 }

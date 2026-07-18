@@ -332,6 +332,7 @@ export async function upsertBodyStat(
 /** The metric fields a sync can carry, keyed by recorded_on. */
 export interface DailyHealthInput {
   recorded_on: string;
+  bodyweight?: number | null;
   steps?: number | null;
   active_kcal?: number | null;
   total_kcal?: number | null;
@@ -343,6 +344,7 @@ export interface DailyHealthInput {
 }
 
 const DAILY_HEALTH_METRICS = [
+  "bodyweight",
   "steps",
   "active_kcal",
   "total_kcal",
@@ -423,6 +425,7 @@ export async function setDailyHealth(
       {
         user_id: user.id,
         recorded_on: input.recorded_on,
+        bodyweight: input.bodyweight ?? null,
         steps: input.steps ?? null,
         active_kcal: input.active_kcal ?? null,
         total_kcal: input.total_kcal ?? null,

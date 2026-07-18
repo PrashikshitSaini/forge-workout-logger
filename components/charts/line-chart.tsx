@@ -37,6 +37,7 @@ export function LineChart({
   const y = (v: number) => padY + (1 - (v - min) / range) * (H - padY * 2);
 
   const linePath = data.map((d, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(d.value)}`).join(" ");
+  const areaPath = `${linePath} L ${x(data.length - 1)} ${H - padY} L ${x(0)} ${H - padY} Z`;
 
   return (
     <div>
@@ -44,6 +45,7 @@ export function LineChart({
         {/* baseline + top gridlines */}
         <line x1={padX} y1={H - padY} x2={W - padX} y2={H - padY} stroke="var(--border)" strokeWidth="1" />
         <line x1={padX} y1={padY} x2={W - padX} y2={padY} stroke="var(--border)" strokeWidth="0.5" />
+        <path d={areaPath} fill="var(--accent)" opacity="0.08" />
         <path d={linePath} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
         {data.map((d, i) => (
           <circle key={i} cx={x(i)} cy={y(d.value)} r={data.length > 24 ? 1.5 : 2.5} fill="var(--accent)" />

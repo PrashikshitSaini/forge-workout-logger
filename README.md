@@ -34,6 +34,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Supabase
    - `supabase/migrations/0004_daily_health.sql`
    - `supabase/migrations/0005_meals.sql`
    - `supabase/migrations/0006_atomic_workout_edits.sql`
+   - `supabase/migrations/0007_unify_daily_health.sql`
 3. **Auth → Providers → Email**: ensure Email is enabled (magic link). For local
    testing, add `http://localhost:3000/**` under **Auth → URL Configuration →
    Redirect URLs** (and your production URL when you deploy).
@@ -71,12 +72,14 @@ Routines** screen.
 Open the deployed URL in Chrome → menu → **Add to Home screen**. It launches
 full-screen like a native app.
 
-## Body stats / Samsung Health
+## Health stats / MacroDroid
 
-A PWA can't read Samsung Health or a Galaxy Watch directly (that's a native-only
-Android API with no web bridge). Enter the few stats that matter — bodyweight,
-sleep, resting HR — by hand on the **Stats** tab; the AI uses them to relate
-recovery to your lifts. A CSV-import path can be added later if you want it.
+A PWA can't read Samsung Health or a Galaxy Watch directly, so MacroDroid sends
+daily weight, steps, calories, sleep, distance, and heart-rate data to
+`/api/health-sync`. The **Stats** tab keeps that data in one editable timeline;
+the AI uses the same consolidated values to relate recovery to training.
+For structured sync payloads, send weight as `bodyweight` in the app's configured
+weight unit alongside the existing health fields.
 
 ## Deploy (Vercel)
 

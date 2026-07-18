@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   getActiveRegime,
-  getBodyStats,
+  getDailyHealth,
   getMeals,
   getRecentSessions,
   getRoutinesWithExercises,
@@ -39,7 +39,7 @@ export async function buildCoachContext(sb: SupabaseClient): Promise<string> {
     getRoutinesWithExercises(sb, regime.id),
     getRecentSessions(sb, 25),
     getSetsSince(sb, since),
-    getBodyStats(sb, 3),
+    getDailyHealth(sb, 3),
     // Meal logging was added after the original schema. Keep the workout coach
     // usable during a rolling deploy where migration 0005 is not applied yet.
     getMeals(sb, 100).catch(() => []),
@@ -120,9 +120,11 @@ export async function buildCoachContext(sb: SupabaseClient): Promise<string> {
   if (latest) {
     const parts: string[] = [];
     if (latest.bodyweight != null) parts.push(`bodyweight ${latest.bodyweight} ${WEIGHT_UNIT}`);
-    if (latest.sleep_hours != null) parts.push(`sleep ${latest.sleep_hours}h`);
+    if (latest.sleep_minutes != null) {
+      parts.push(`sleep ${Math.round((latest.sleep_minutes / 60) * 10) / 10}h`);
+    }
     if (latest.resting_hr != null) parts.push(`resting HR ${latest.resting_hr}`);
-    if (parts.length) lines.push(`Latest body stats (${latest.recorded_on}): ${parts.join(", ")}.`);
+    if (parts.length) lines.push(`Latest health stats (${latest.recorded_on}): ${parts.join(", ")}.`);
   }
 
   const nutritionSince = toISODate(addDays(new Date(), -6));

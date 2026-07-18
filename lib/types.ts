@@ -93,13 +93,14 @@ export interface BodyStat {
 
 /**
  * Day-level metrics synced from a wearable (see supabase/migrations/0004).
- * Distinct from BodyStat, which holds manual entries — this table is the home
- * for watch-sourced data and is never hand-edited in the app.
+ * Consolidated health timeline. MacroDroid is the primary source, with manual
+ * edits available in the app for corrections or values the watch cannot send.
  */
 export interface DailyHealth {
   id: string;
   user_id: string;
   recorded_on: string; // ISO date
+  bodyweight: number | null;
   steps: number | null;
   active_kcal: number | null;
   total_kcal: number | null;
