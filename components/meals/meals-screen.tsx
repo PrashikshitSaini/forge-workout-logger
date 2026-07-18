@@ -138,13 +138,13 @@ export function MealsScreen() {
 
           <Button className="w-full" size="lg" onClick={handleAnalyze} disabled={!text.trim() || analyzing}>
             {analyzing ? (
-              <><Loader2 size={18} className="animate-spin" /> Researching labels…</>
+              <><Loader2 size={18} className="animate-spin" /> Researching & verifying…</>
             ) : (
-              <><Search size={18} /> Research & log meal</>
+              <><Search size={18} /> Research & verify meal</>
             )}
           </Button>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Branded foods are checked against web sources. Estimates and assumptions stay visible below.
+            Forge saves a meal only when its serving math and label values can be traced to the linked sources.
           </p>
         </section>
 
