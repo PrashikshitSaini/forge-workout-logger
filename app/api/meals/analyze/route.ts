@@ -6,9 +6,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { findSimilarMeal } from "@/lib/meal-duplicates";
 import {
-  NutritionVerificationError,
   ResearchAnalysisSchema,
-  verifyAndScaleAnalysis,
+  scaleResearchedAnalysis,
   type NutritionCitation,
   type VerifiedMealItem,
 } from "@/lib/nutrition-research";
@@ -36,8 +35,9 @@ Research rules:
 - For generic whole foods, use a reputable standard nutrition source. Never invent a branded product.
 - If preparation is ambiguous (for example cooked vs dry rice), choose the most ordinary interpretation and state it in assumptions.
 - Include oils, sauces, and cooking ingredients only when the user mentions them. Do not silently add ingredients.
-- Use the exact direct URL returned by web search. Copy a short VERBATIM excerpt containing serving size, calories, protein, carbs, and fat into "evidence". Do not paraphrase it.
-- If the search result does not expose enough label evidence, search again. If exact evidence still cannot be found, do not guess.
+- Open the exact product or nutrition page before answering. Never use a brand homepage, retailer homepage, search page, category page, or generic landing page as source_url.
+- Use the exact direct URL returned by search/fetch. Copy a short excerpt containing serving size, calories, protein, carbs, and fat into "evidence" when the page exposes it.
+- If exact product evidence is unavailable after searching, use an authoritative generic-food source, explain the substitution in assumptions, set confidence low, and still return the best practical estimate. Never refuse to produce the meal log.
 - Mark confidence high only for an exact product/variant and exact serving conversion; medium for an authoritative generic-food match; low for any necessary approximation.
 
 Output ONLY one JSON object with this exact shape:
@@ -61,9 +61,9 @@ Output ONLY one JSON object with this exact shape:
       "fat_g": 0,
       "fiber_g": 0
     },
-    "source_url": "direct supporting URL",
-    "source_title": "short source label",
-    "evidence": "verbatim source excerpt containing the nutrition facts",
+    "source_url": "direct supporting URL or null",
+    "source_title": "short source label or null",
+    "evidence": "source excerpt containing the nutrition facts or null",
     "confidence": "high|medium|low"
   }]
 }`;
@@ -99,11 +99,11 @@ function extractCitations(annotations: OpenRouterAnnotation[] | undefined): Nutr
   const citations = new Map<string, NutritionCitation>();
   for (const annotation of annotations ?? []) {
     const citation = annotation.url_citation;
-    if (annotation.type !== "url_citation" || !citation?.url || !citation.content) continue;
+    if (annotation.type !== "url_citation" || !citation?.url) continue;
     citations.set(citation.url, {
       url: citation.url,
       title: citation.title?.trim() || new URL(citation.url).hostname,
-      content: citation.content,
+      content: citation.content ?? "",
     });
   }
   return [...citations.values()];
@@ -142,9 +142,9 @@ export async function POST(req: Request) {
 
   try {
     // Keep nutrition research independent from the conversational coach model.
-    // Gemini 3 Flash has reliable tool use + structured extraction; Exa gives
-    // us extractive page evidence that the server can verify deterministically.
-    const model = process.env.MEAL_LOGGER_MODEL || "google/gemini-3-flash-preview";
+    // Gemini 3.5 Flash is the quality/cost balance for product research. Native
+    // Google search finds the product, then web_fetch opens the exact label page.
+    const model = process.env.MEAL_LOGGER_MODEL || "google/gemini-3.5-flash";
     const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -166,18 +166,17 @@ export async function POST(req: Request) {
           {
             type: "openrouter:web_search",
             parameters: {
-              engine: "exa",
-              max_results: 4,
+              engine: "native",
+              max_results: 6,
               max_total_results: 30,
-              max_characters: 6_000,
-              excluded_domains: [
-                "reddit.com",
-                "pinterest.com",
-                "facebook.com",
-                "instagram.com",
-                "tiktok.com",
-                "youtube.com",
-              ],
+            },
+          },
+          {
+            type: "openrouter:web_fetch",
+            parameters: {
+              engine: "openrouter",
+              max_uses: 12,
+              max_content_tokens: 20_000,
             },
           },
         ],
@@ -201,7 +200,7 @@ export async function POST(req: Request) {
     const content = message?.content?.trim();
     if (!content) throw new Error("Empty meal research response.");
     const analysis = ResearchAnalysisSchema.parse(extractJson(content));
-    const items = verifyAndScaleAnalysis(analysis, extractCitations(message?.annotations));
+    const items = scaleResearchedAnalysis(analysis, extractCitations(message?.annotations));
 
     if (!body.meal_id && !body.allow_duplicate) {
       const { data: existingMeals, error: existingMealsError } = await supabase
@@ -245,16 +244,13 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("Meal analysis failed", err);
     const missingMigration = err instanceof Error && /create_meal|replace_meal|schema cache/i.test(err.message);
-    const verificationFailed = err instanceof NutritionVerificationError;
     return NextResponse.json(
       {
         error: missingMigration
           ? "Meal storage is not ready. Apply migrations 0005 and 0008 first."
-          : verificationFailed
-            ? "I found results, but couldn't verify every nutrition label. Add the exact product or serving details and try again."
           : "I couldn't turn that into a reliable meal. Add quantities and try once more.",
       },
-      { status: verificationFailed ? 422 : 502 },
+      { status: 502 },
     );
   }
 }

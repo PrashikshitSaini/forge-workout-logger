@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NutritionVerificationError,
+  scaleResearchedAnalysis,
   verifyAndScaleItem,
 } from "../lib/nutrition-research.ts";
 
@@ -117,4 +118,38 @@ test("rejects internally implausible nutrition labels", () => {
     evidence: item.evidence.replace("Protein 7g", "Protein 70g"),
   };
   assert.throws(() => verifyAndScaleItem(badItem, [badCitation]), NutritionVerificationError);
+});
+
+test("logs a researched meal with low confidence when strict evidence formatting fails", () => {
+  const analysis = {
+    title: "Black beans",
+    meal_type: "meal",
+    assumptions: [],
+    items: [{ ...item, evidence: "Nutrition facts were returned in a different format." }],
+  };
+  const [logged] = scaleResearchedAnalysis(analysis, [citation]);
+
+  assert.equal(logged.calories, 220);
+  assert.equal(logged.protein_g, 14);
+  assert.equal(logged.confidence, "low");
+  assert.equal(logged.source_url, citation.url);
+});
+
+test("does not present a homepage as a nutrition source", () => {
+  const homepage = {
+    url: "https://example.com/",
+    title: "Example home",
+    content: citation.content,
+  };
+  const analysis = {
+    title: "Black beans",
+    meal_type: "meal",
+    assumptions: [],
+    items: [{ ...item, source_url: homepage.url, evidence: null }],
+  };
+  const [logged] = scaleResearchedAnalysis(analysis, [homepage]);
+
+  assert.equal(logged.calories, 220);
+  assert.equal(logged.source_url, null);
+  assert.equal(logged.source_title, null);
 });

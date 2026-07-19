@@ -205,7 +205,7 @@ export function MealsScreen() {
             )}
           </Button>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Forge saves a meal only when its serving math and label values can be traced to the linked sources.
+            Forge researches the best available label, scales it to your serving, and always keeps the source confidence visible.
           </p>
         </section>
 

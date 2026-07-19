@@ -32,9 +32,9 @@ export const ResearchItemSchema = z.object({
   source_amount: z.number().positive().max(100_000),
   source_unit: ServingUnitSchema,
   label: LabelMacrosSchema,
-  source_url: z.string().url().max(2_000),
-  source_title: z.string().trim().min(1).max(240),
-  evidence: z.string().trim().min(12).max(1_200),
+  source_url: z.string().url().max(2_000).nullable(),
+  source_title: z.string().trim().min(1).max(240).nullable(),
+  evidence: z.string().trim().min(12).max(1_200).nullable(),
   confidence: z.enum(["high", "medium", "low"]),
 });
 
@@ -63,8 +63,8 @@ export interface VerifiedMealItem {
   carbs_g: number;
   fat_g: number;
   fiber_g: number | null;
-  source_url: string;
-  source_title: string;
+  source_url: string | null;
+  source_title: string | null;
   confidence: "high" | "medium" | "low";
 }
 
@@ -188,6 +188,70 @@ function findCitation(sourceUrl: string, citations: NutritionCitation[]): Nutrit
   return citations.find((citation) => canonicalUrl(citation.url) === wanted) ?? null;
 }
 
+function isDirectNutritionPage(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    const path = url.pathname.replace(/\/+$/, "").toLocaleLowerCase();
+    if (!path || path === "/") return false;
+    return !/(^|\/)(search|browse|category|categories|shop|products?)\/?$/.test(path);
+  } catch {
+    return false;
+  }
+}
+
+function sourceWords(item: ResearchItem): string[] {
+  return `${item.brand ?? ""} ${item.name}`
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .split(" ")
+    .filter((word) => word.length > 2);
+}
+
+function bestDirectCitation(
+  item: ResearchItem,
+  citations: NutritionCitation[],
+): NutritionCitation | null {
+  const exact = item.source_url ? findCitation(item.source_url, citations) : null;
+  if (exact && isDirectNutritionPage(exact.url)) return exact;
+
+  const words = sourceWords(item);
+  let best: NutritionCitation | null = null;
+  let bestScore = 0;
+  for (const citation of citations) {
+    if (!isDirectNutritionPage(citation.url)) continue;
+    const haystack = `${citation.title} ${citation.content}`.toLocaleLowerCase();
+    const score = words.filter((word) => haystack.includes(word)).length;
+    if (score > bestScore) {
+      best = citation;
+      bestScore = score;
+    }
+  }
+  const requiredScore = item.brand ? Math.min(2, words.length) : 1;
+  return bestScore >= requiredScore ? best : null;
+}
+
+function scaleItem(
+  item: ResearchItem,
+  citation: NutritionCitation | null,
+  confidence: VerifiedMealItem["confidence"],
+): VerifiedMealItem {
+  const scale = item.consumed_amount / item.source_amount;
+  return {
+    name: item.name,
+    brand: item.brand,
+    quantity: item.quantity,
+    calories: round(item.label.calories * scale),
+    protein_g: round(item.label.protein_g * scale),
+    carbs_g: round(item.label.carbs_g * scale),
+    fat_g: round(item.label.fat_g * scale),
+    fiber_g: item.label.fiber_g == null ? null : round(item.label.fiber_g * scale),
+    source_url: citation?.url ?? null,
+    source_title: citation?.title ?? null,
+    confidence,
+  };
+}
+
 /**
  * Convert researched per-serving label facts into the exact consumed macros.
  * Nothing reaches the database unless its source URL and quoted nutrition facts
@@ -197,11 +261,15 @@ export function verifyAndScaleItem(
   item: ResearchItem,
   citations: NutritionCitation[],
 ): VerifiedMealItem {
+  if (!item.source_url || !item.evidence) {
+    throw new NutritionVerificationError(`No search evidence was returned for ${item.name}.`);
+  }
+  const evidence = item.evidence;
   const citation = findCitation(item.source_url, citations);
   if (!citation?.content) {
     throw new NutritionVerificationError(`No search evidence was returned for ${item.name}.`);
   }
-  if (!evidenceIsQuoted(item.evidence, citation.content)) {
+  if (!evidenceIsQuoted(evidence, citation.content)) {
     throw new NutritionVerificationError(`The cited label evidence could not be verified for ${item.name}.`);
   }
 
@@ -212,13 +280,13 @@ export function verifyAndScaleItem(
     ["fat_g", item.label.fat_g, 0.6],
   ];
   if (item.label.fiber_g != null) facts.push(["fiber_g", item.label.fiber_g, 0.6]);
-  if (!facts.every(([macro, value, tolerance]) => macroFactAppears(macro, value, item.evidence, tolerance))) {
+  if (!facts.every(([macro, value, tolerance]) => macroFactAppears(macro, value, evidence, tolerance))) {
     throw new NutritionVerificationError(`The source excerpt does not support all macros for ${item.name}.`);
   }
-  if (!numericFactAppears(item.source_amount, item.evidence, 0.02)) {
+  if (!numericFactAppears(item.source_amount, evidence, 0.02)) {
     throw new NutritionVerificationError(`The source serving amount is not supported for ${item.name}.`);
   }
-  if (!servingUnitAppears(item.source_unit, item.evidence)) {
+  if (!servingUnitAppears(item.source_unit, evidence)) {
     throw new NutritionVerificationError(`The source serving unit is not supported for ${item.name}.`);
   }
   if (item.consumed_unit !== item.source_unit) {
@@ -235,20 +303,7 @@ export function verifyAndScaleItem(
     throw new NutritionVerificationError(`The label macros are internally inconsistent for ${item.name}.`);
   }
 
-  const scale = item.consumed_amount / item.source_amount;
-  const verified: VerifiedMealItem = {
-    name: item.name,
-    brand: item.brand,
-    quantity: item.quantity,
-    calories: round(item.label.calories * scale),
-    protein_g: round(item.label.protein_g * scale),
-    carbs_g: round(item.label.carbs_g * scale),
-    fat_g: round(item.label.fat_g * scale),
-    fiber_g: item.label.fiber_g == null ? null : round(item.label.fiber_g * scale),
-    source_url: citation.url,
-    source_title: citation.title || item.source_title,
-    confidence: item.confidence,
-  };
+  const verified = scaleItem(item, citation, item.confidence);
 
   if (
     verified.calories > 100_000 ||
@@ -271,4 +326,23 @@ export function verifyAndScaleAnalysis(
     throw new NutritionVerificationError("The nutrition search returned no citable sources.");
   }
   return analysis.items.map((item) => verifyAndScaleItem(item, citations));
+}
+
+/**
+ * Production meal conversion: strict verification upgrades confidence, but a
+ * citation-format mismatch never prevents the user from logging a meal.
+ * Unverified/home-page sources are omitted instead of presented as evidence.
+ */
+export function scaleResearchedAnalysis(
+  analysis: ResearchAnalysis,
+  citations: NutritionCitation[],
+): VerifiedMealItem[] {
+  return analysis.items.map((item) => {
+    try {
+      return verifyAndScaleItem(item, citations);
+    } catch (error) {
+      if (!(error instanceof NutritionVerificationError)) throw error;
+      return scaleItem(item, bestDirectCitation(item, citations), "low");
+    }
+  });
 }
