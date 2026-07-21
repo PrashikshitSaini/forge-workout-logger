@@ -125,10 +125,6 @@ export interface Meal {
   original_input: string;
   assumptions: string[];
   created_at: string;
-  nutrition_status?: "legacy" | "confirmed" | "estimate";
-  source_reusable_meal_id?: string | null;
-  source_reusable_meal_revision?: number | null;
-  source_meal_id?: string | null;
 }
 
 export interface MealItem {
