@@ -3,6 +3,8 @@ import fs from "node:fs";
 import test from "node:test";
 
 const sql = fs.readFileSync(new URL("../supabase/migrations/0009_durable_meals_and_reuse.sql", import.meta.url), "utf8");
+const analyzer = fs.readFileSync(new URL("../app/api/meals/analyze/route.ts", import.meta.url), "utf8");
+const correctiveSql = fs.readFileSync(new URL("../supabase/migrations/0010_fix_durable_meal_rpc_privileges.sql", import.meta.url), "utf8");
 
 test("durable schema has idempotency, leases, and exactly-once finalization guard", () => {
   assert.match(sql, /unique \(user_id, idempotency_key\)/);
@@ -27,4 +29,23 @@ test("needs-review paths retain draft estimates and allow explicit resolution", 
 test("worker RPCs revoke PostgreSQL's default PUBLIC execute privilege", () => {
   assert.match(sql, /revoke all on function[\s\S]*from public, anon, authenticated, service_role/i);
   assert.match(sql, /grant execute on function claim_due_meal_research_job\(\)[\s\S]*to service_role/i);
+});
+
+test("approved user mutations are definer functions with owner checks", () => {
+  for (const name of ["enqueue_meal_research", "copy_meal_from_reusable", "copy_meal_from_history", "save_reusable_meal_from_meal", "discard_meal_research_job", "approve_meal_research_estimate"]) {
+    assert.match(sql, new RegExp(`create or replace function ${name}[\\s\\S]*?security definer`, "i"));
+  }
+  assert.match(sql, /where id=p_job_id and user_id=\(select auth\.uid\(\)\)/i);
+  assert.match(sql, /where id=p_reusable_id and user_id=v_uid/i);
+});
+
+test("forward corrective migration fixes databases that already ran 0009", () => {
+  assert.match(correctiveSql, /alter function enqueue_meal_research[\s\S]*security definer/i);
+  assert.match(correctiveSql, /revoke all on function[\s\S]*from public, anon, authenticated, service_role/i);
+});
+
+test("fast fallback lowers provider work without bypassing verification", () => {
+  assert.match(analyzer, /body\.fast/);
+  assert.match(analyzer, /maxResults: 3, maxTotalResults: 12, maxFetches: 6/);
+  assert.match(analyzer, /scaleResearchedAnalysis\(analysis, extractCitations/);
 });

@@ -90,7 +90,7 @@ create or replace function enqueue_meal_research(
   p_target_meal_id uuid default null
 )
 returns meal_research_jobs
-language plpgsql security invoker set search_path = public, pg_temp
+language plpgsql security definer set search_path = public, pg_temp
 as $$
 declare v_uid uuid := (select auth.uid()); v_job meal_research_jobs;
 begin
@@ -190,7 +190,7 @@ begin
 end $$;
 
 create or replace function copy_meal_from_reusable(p_reusable_id uuid, p_logged_on date)
-returns uuid language plpgsql security invoker set search_path = public, pg_temp as $$
+returns uuid language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_uid uuid := (select auth.uid()); v_template reusable_meals; v_meal_id uuid; v_item jsonb; v_position integer := 0;
 begin
   select * into v_template from reusable_meals where id=p_reusable_id and user_id=v_uid for update;
@@ -207,7 +207,7 @@ begin
 end $$;
 
 create or replace function save_reusable_meal_from_meal(p_meal_id uuid, p_name text)
-returns reusable_meals language plpgsql security invoker set search_path = public, pg_temp as $$
+returns reusable_meals language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_uid uuid := (select auth.uid()); v_meal meals; v_template reusable_meals;
 begin
   select * into v_meal from meals where id=p_meal_id and user_id=v_uid;
@@ -224,7 +224,7 @@ begin
 end $$;
 
 create or replace function copy_meal_from_history(p_source_meal_id uuid, p_logged_on date)
-returns uuid language plpgsql security invoker set search_path = public, pg_temp as $$
+returns uuid language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_uid uuid := (select auth.uid()); v_source meals; v_meal_id uuid;
 begin
   select * into v_source from meals where id=p_source_meal_id and user_id=v_uid;
@@ -237,7 +237,7 @@ begin
 end $$;
 
 create or replace function discard_meal_research_job(p_job_id uuid)
-returns void language plpgsql security invoker set search_path = public, pg_temp as $$
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
 begin
   update meal_research_jobs set status='discarded', completed_at=now(), updated_at=now()
   where id=p_job_id and user_id=(select auth.uid()) and status='needs_review';
@@ -245,7 +245,7 @@ begin
 end $$;
 
 create or replace function approve_meal_research_estimate(p_job_id uuid)
-returns uuid language plpgsql security invoker set search_path = public, pg_temp as $$
+returns uuid language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_job meal_research_jobs; v_meal_id uuid; v_item jsonb; v_position integer := 0;
 begin
   select * into v_job from meal_research_jobs where id=p_job_id and user_id=(select auth.uid()) for update;

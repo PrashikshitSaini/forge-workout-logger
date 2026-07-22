@@ -80,7 +80,7 @@ export function MealsScreen() {
   }, [loggedOn]);
   const yesterdayMeals = useMemo(() => meals.filter((meal) => meal.logged_on === yesterday), [meals, yesterday]);
 
-  async function handleLegacyAnalyze(options: { mealId?: string; allowDuplicate?: boolean } = {}) {
+  async function handleLegacyAnalyze(options: { mealId?: string; allowDuplicate?: boolean; fast?: boolean } = {}) {
     const mealText = text.trim();
     if (!mealText || analyzing) return;
     setAnalyzing(true);
@@ -94,6 +94,7 @@ export function MealsScreen() {
           logged_on: loggedOn,
           ...(options.mealId ? { meal_id: options.mealId } : {}),
           ...(options.allowDuplicate ? { allow_duplicate: true } : {}),
+          ...(options.fast ? { fast: true } : {}),
         }),
       });
       const json = (await res.json().catch(() => ({}))) as AnalyzeResponse;
@@ -291,8 +292,8 @@ export function MealsScreen() {
           <p className="text-xs leading-relaxed text-muted-foreground">
             Forge researches the best available label, scales it to your serving, and always keeps the source confidence visible.
           </p>
-          <button type="button" className="text-xs text-muted underline" onClick={() => void handleLegacyAnalyze(updatingMeal ? { mealId: updatingMeal.id } : {})} disabled={!text.trim() || analyzing}>
-            Use immediate research fallback
+          <button type="button" className="text-xs text-muted underline" onClick={() => void handleLegacyAnalyze(updatingMeal ? { mealId: updatingMeal.id, fast: true } : { fast: true })} disabled={!text.trim() || analyzing}>
+            Use faster immediate research fallback
           </button>
         </section>
 
