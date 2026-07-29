@@ -2,11 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-import { VBars } from "@/components/charts/bars";
 import { toast } from "@/components/ui/toast";
 import { WEIGHT_UNIT } from "@/lib/constants";
 import { formatShortDate, toISODate } from "@/lib/format";
-import { buildProgressOverview, type OverviewDay, type ProgressOverview } from "@/lib/progress-overview";
+import {
+  buildProgressOverview,
+  type ExerciseProgress,
+  type OverviewDay,
+  type OverviewSetSummary,
+  type ProgressOverview,
+} from "@/lib/progress-overview";
 import { getCompletedOverviewSets } from "@/lib/queries";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -54,10 +59,6 @@ export function OverviewScreen() {
 
   const dates = useMemo(() => monthDates(month), [month]);
   const selectedDay = selectedDate ? overview?.days.get(selectedDate) ?? null : null;
-  const calendarVolumeMax = useMemo(
-    () => Math.max(0, ...(overview ? [...overview.days.values()].map((day) => day.volume) : [])),
-    [overview],
-  );
 
   if (loading || !overview) {
     return (
@@ -98,15 +99,15 @@ export function OverviewScreen() {
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-muted">Training volume</h2>
+          <h2 className="text-xs font-medium uppercase tracking-wide text-muted">Training consistency</h2>
           <span className="text-xs text-muted-foreground">Last 8 weeks</span>
         </div>
         <div className="rounded-xl border border-border bg-surface p-4">
-          {overview.weeklyVolume.some((week) => week.value > 0) ? (
-            <VBars data={overview.weeklyVolume} unit={` ${WEIGHT_UNIT}`} />
+          {overview.weeklySessions.some((week) => week.value > 0) ? (
+            <ConsistencyChart data={overview.weeklySessions} />
           ) : (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              Completed weighted sets will appear here.
+              Finish a workout to see your weekly training rhythm.
             </p>
           )}
         </div>
@@ -154,7 +155,6 @@ export function OverviewScreen() {
               const iso = toISODate(date);
               const day = overview.days.get(iso);
               const isSelected = selectedDate === iso;
-              const intensity = day && day.volume > 0 && calendarVolumeMax > 0 ? Math.ceil((day.volume / calendarVolumeMax) * 3) : 0;
               return (
                 <button
                   key={iso}
@@ -172,10 +172,7 @@ export function OverviewScreen() {
                     <span
                       aria-hidden="true"
                       className={cn(
-                        "absolute bottom-1 h-1 w-1 rounded-full bg-accent",
-                        !isSelected && intensity === 1 && "opacity-45",
-                        !isSelected && intensity === 2 && "opacity-70",
-                        !isSelected && intensity === 3 && "h-1.5 w-1.5 opacity-100",
+                        "absolute bottom-1 h-1.5 w-1.5 rounded-full bg-accent",
                         isSelected && "bg-accent-foreground",
                       )}
                     />
@@ -185,12 +182,44 @@ export function OverviewScreen() {
             })}
           </div>
           <p className="mt-3 text-center text-[11px] text-muted-foreground">
-            Dots mark completed workouts. Larger dots indicate more completed strength-set volume.
+            Dots mark days with a completed workout.
           </p>
         </div>
       </section>
 
       <DayDetail date={selectedDate} day={selectedDay} hasHistory={hasHistory} />
+    </div>
+  );
+}
+
+function ConsistencyChart({ data }: { data: { label: string; value: number }[] }) {
+  const max = Math.max(...data.map((week) => week.value), 1);
+  return (
+    <div>
+      <div className="flex h-32 items-end gap-1.5" aria-label="Completed workouts by week">
+        {data.map((week) => (
+          <div key={week.label} className="flex h-full flex-1 flex-col items-center justify-end gap-1" title={`${week.value} completed workouts`}>
+            <span className="text-[10px] tabular text-muted-foreground">{week.value}</span>
+            <div className="flex h-24 w-full items-end rounded-t bg-surface-2">
+              <div
+                className="w-full rounded-t"
+                style={{
+                  height: week.value === 0 ? "1px" : `${Math.max(10, (week.value / max) * 100)}%`,
+                  backgroundColor: "var(--accent)",
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 flex gap-1.5">
+        {data.map((week) => (
+          <span key={week.label} className="flex-1 text-center text-[10px] text-muted-foreground">
+            {week.label}
+          </span>
+        ))}
+      </div>
+      <p className="mt-3 text-center text-xs text-muted-foreground">Completed workouts each week</p>
     </div>
   );
 }
@@ -237,11 +266,89 @@ function DayDetail({ date, day, hasHistory }: { date: string | null; day: Overvi
       <p className="mt-3 text-sm text-muted-foreground">
         {day.sessions} completed workout{day.sessions === 1 ? "" : "s"} · {day.exercises} exercise{day.exercises === 1 ? "" : "s"} · {day.completedSets} set{day.completedSets === 1 ? "" : "s"}
       </p>
-      {day.bestSet ? (
-        <p className="mt-2 text-sm text-muted-foreground">
-          Heaviest set: <span className="text-foreground">{day.bestSet.exerciseName} {day.bestSet.weight} × {day.bestSet.reps}</span>
-        </p>
-      ) : null}
+      <ExerciseProgressList exercises={day.exerciseProgress} />
     </section>
+  );
+}
+
+function ExerciseProgressList({ exercises }: { exercises: ExerciseProgress[] }) {
+  if (exercises.length === 0) return null;
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted">Exercise progress</h3>
+      <div className="mt-3 space-y-3">
+        {exercises.map((exercise) => (
+          <article key={exercise.exerciseId} className="rounded-lg bg-surface-2 p-3">
+            <h4 className="text-sm font-medium">{exercise.exerciseName}</h4>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              {exercise.completedSets} completed set{exercise.completedSets === 1 ? "" : "s"}
+              {exercise.setSummaries.length > 0 ? ` · ${formatSetSummaries(exercise.setSummaries)}` : ""}
+            </p>
+            {exercise.currentEstimatedMax != null ? (
+              <div className="mt-3 flex items-center gap-3">
+                <TrendSparkline values={exercise.recentEstimatedMaxes} />
+                <div>
+                  <p className="text-xs text-muted-foreground">Estimated strength</p>
+                  <p className="text-sm font-medium tabular">{Math.round(exercise.currentEstimatedMax).toLocaleString()} {WEIGHT_UNIT}</p>
+                  <p className="text-xs text-muted-foreground">{exerciseComparisonLabel(exercise)}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Add weight and reps to compare this lift over time.
+              </p>
+            )}
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatSetSummaries(summaries: OverviewSetSummary[]): string {
+  const visible = summaries.slice(0, 3).map((summary) => {
+    const setCount = summary.count === 1 ? "" : ` (${summary.count} sets)`;
+    if (summary.weight != null && summary.reps != null) return `${summary.weight} ${WEIGHT_UNIT} × ${summary.reps}${setCount}`;
+    if (summary.reps != null) return `${summary.reps} reps${setCount}`;
+    return `untracked${setCount}`;
+  });
+  const hiddenCount = summaries.length - visible.length;
+  return `${visible.join(" · ")}${hiddenCount > 0 ? ` +${hiddenCount} more` : ""}`;
+}
+
+function exerciseComparisonLabel(exercise: ExerciseProgress): string {
+  if (exercise.currentEstimatedMax != null && exercise.priorEstimatedMax != null) {
+    const difference = Math.round(exercise.currentEstimatedMax - exercise.priorEstimatedMax);
+    const change = difference === 0 ? "same" : `${difference > 0 ? "+" : ""}${difference.toLocaleString()} ${WEIGHT_UNIT}`;
+    return `${change} vs prior completed session (${Math.round(exercise.priorEstimatedMax).toLocaleString()} ${WEIGHT_UNIT})`;
+  }
+  return "Baseline recorded — complete this lift again to compare.";
+}
+
+function TrendSparkline({ values }: { values: number[] }) {
+  const width = 72;
+  const height = 28;
+  if (values.length < 2) {
+    return (
+      <div className="grid h-7 w-[72px] place-items-center" aria-label="Baseline estimated strength">
+        <span className="h-2 w-2 rounded-full bg-accent" />
+      </div>
+    );
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = max - min || 1;
+  const points = values
+    .map((value, index) => {
+      const x = (index / (values.length - 1)) * width;
+      const y = height - 3 - ((value - min) / spread) * (height - 6);
+      return `${x},${y}`;
+    })
+    .join(" ");
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-7 w-[72px] shrink-0" role="img" aria-label="Estimated strength over recent completed sessions">
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" className="text-accent" />
+      <circle cx={width} cy={Number(points.split(" ").at(-1)?.split(",")[1])} r="2.5" className="fill-accent" />
+    </svg>
   );
 }
