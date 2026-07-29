@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, Reorder } from "framer-motion";
 import {
   ArrowUpDown,
@@ -25,7 +25,6 @@ import {
   addSessionExerciseAndRoutine,
   finishSession,
   removeSessionExerciseAndRoutine,
-  reorderSessionExercisesAndRoutine,
   swapSessionExerciseAndRoutine,
   updateSessionNotes,
 } from "@/lib/mutations";
@@ -34,6 +33,11 @@ import { DATA_CHANGED_EVENT } from "@/lib/events";
 import { getWorkoutNoteHistory } from "@/lib/queries";
 import { NoteHistoryModal } from "./note-history-modal";
 import type { RegisterSetFlush } from "./set-row";
+import {
+  flushPendingWorkoutSession,
+  getPendingReorder,
+  queueReorder,
+} from "@/lib/workout-pending";
 
 type PickerMode = "add" | "swap";
 
@@ -45,7 +49,14 @@ export function SessionLogger({
   lastSession: SessionFull | null;
 }) {
   const sb = createSupabaseBrowserClient();
-  const [exercises, setExercises] = useState<SessionExerciseFull[]>(session.session_exercises);
+  const [exercises, setExercises] = useState<SessionExerciseFull[]>(() => {
+    const recoveredOrder = getPendingReorder(session.id);
+    if (!recoveredOrder) return session.session_exercises;
+    const positions = new Map(recoveredOrder.map((id, index) => [id, index]));
+    return [...session.session_exercises].sort(
+      (a, b) => (positions.get(a.id) ?? Infinity) - (positions.get(b.id) ?? Infinity),
+    );
+  });
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<PickerMode>("add");
   const [swapTarget, setSwapTarget] = useState<SessionExerciseFull | null>(null);
@@ -60,6 +71,12 @@ export function SessionLogger({
   const [noteHistoryLoading, setNoteHistoryLoading] = useState(false);
   const [noteHistory, setNoteHistory] = useState<NoteHistoryEntry[]>([]);
   const setFlushers = useRef(new Map<string, () => Promise<boolean>>());
+
+  useEffect(() => {
+    // If the app was closed during a save, make one recovery attempt when the
+    // workout is opened again. Ordinary saving remains online-first.
+    void flushPendingWorkoutSession(sb, session.id);
+  }, [sb, session.id]);
 
   const registerSetFlush: RegisterSetFlush = useCallback((setId, flush) => {
     setFlushers.current.set(setId, flush);
@@ -162,10 +179,12 @@ export function SessionLogger({
   async function saveReorder() {
     setSavingOrder(true);
     const ordered = order;
+    queueReorder(session.id, ordered.map((se) => se.id));
     try {
-      await reorderSessionExercisesAndRoutine(sb, ordered.map((se) => se.id));
+      const saved = await flushPendingWorkoutSession(sb, session.id);
+      if (!saved) throw new Error("pending reorder");
     } catch {
-      toast("Couldn't save the new order.", "error");
+      toast("Couldn't save the new order — kept on this device and will retry.", "error");
       setSavingOrder(false);
       return;
     }
@@ -178,7 +197,8 @@ export function SessionLogger({
     setFinishing(true);
     try {
       const saved = await Promise.all([...setFlushers.current.values()].map((flush) => flush()));
-      if (saved.some((ok) => !ok)) {
+      const recovered = await flushPendingWorkoutSession(sb, session.id);
+      if (saved.some((ok) => !ok) || !recovered) {
         toast("Some set changes still aren't saved. Check your connection and try again.", "error");
         return;
       }

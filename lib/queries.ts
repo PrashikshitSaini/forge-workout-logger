@@ -319,6 +319,59 @@ export interface ReportSetRow {
   exercise_type: string;
 }
 
+/** A completed set belonging to a finished session, used by the Progress overview. */
+export interface OverviewSetRow {
+  session_id: string;
+  performed_on: string;
+  routine_name: string | null;
+  exercise_id: string;
+  exercise_name: string;
+  exercise_type: string;
+  weight: number | null;
+  reps: number | null;
+}
+
+/**
+ * Every completed set from a finished session. This deliberately excludes
+ * in-progress sessions and pre-filled sets so the overview reflects workouts
+ * the user actually completed.
+ */
+export async function getCompletedOverviewSets(sb: SupabaseClient): Promise<OverviewSetRow[]> {
+  const { data, error } = await sb
+    .from("sets")
+    .select(
+      "weight, reps, session_exercises!inner(exercise:exercises!inner(id, name, type), sessions!inner(id, performed_on, finished_at, routine:routines(name)))",
+    )
+    .eq("done", true)
+    .not("session_exercises.sessions.finished_at", "is", null)
+    .returns<
+      {
+        weight: number | null;
+        reps: number | null;
+        session_exercises: {
+          exercise: { id: string; name: string; type: string };
+          sessions: {
+            id: string;
+            performed_on: string;
+            finished_at: string;
+            routine: { name: string } | null;
+          };
+        };
+      }[]
+    >();
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    session_id: row.session_exercises.sessions.id,
+    performed_on: row.session_exercises.sessions.performed_on,
+    routine_name: row.session_exercises.sessions.routine?.name ?? null,
+    exercise_id: row.session_exercises.exercise.id,
+    exercise_name: row.session_exercises.exercise.name,
+    exercise_type: row.session_exercises.exercise.type,
+    weight: row.weight,
+    reps: row.reps,
+  }));
+}
+
 export async function getSetsSince(
   sb: SupabaseClient,
   sinceISODate: string,

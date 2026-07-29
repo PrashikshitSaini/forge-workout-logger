@@ -133,6 +133,7 @@ export function ExerciseCard({
               key={s.id}
               set={s}
               type={ex.type}
+              sessionId={sessionExercise.session_id}
               onDeleted={handleDeleted}
               registerFlush={registerSetFlush}
             />

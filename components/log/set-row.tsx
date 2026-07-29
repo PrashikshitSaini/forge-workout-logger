@@ -6,8 +6,13 @@ import type { ExerciseType, WorkoutSet } from "@/lib/types";
 import { Stepper } from "@/components/ui/stepper";
 import { toast } from "@/components/ui/toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { deleteSet, updateSet, type SetPatch } from "@/lib/mutations";
+import { deleteSet, type SetPatch } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
+import {
+  flushPendingSet,
+  getPendingSetPatch,
+  queueSetPatch,
+} from "@/lib/workout-pending";
 
 export type RegisterSetFlush = (
   setId: string,
@@ -18,26 +23,32 @@ export type RegisterSetFlush = (
 export function SetRow({
   set,
   type,
+  sessionId,
   onDeleted,
   registerFlush,
 }: {
   set: WorkoutSet;
   type: ExerciseType;
+  sessionId: string;
   onDeleted: (id: string) => void;
   registerFlush?: RegisterSetFlush;
 }) {
   const sb = createSupabaseBrowserClient();
 
-  const [weight, setWeight] = useState(set.weight);
-  const [reps, setReps] = useState(set.reps);
+  const recovered = getPendingSetPatch(set.id);
+  const [weight, setWeight] = useState(recovered?.weight ?? set.weight);
+  const [reps, setReps] = useState(recovered?.reps ?? set.reps);
   const [durationMin, setDurationMin] = useState<number | null>(
-    set.duration_seconds != null ? Math.round(set.duration_seconds / 60) : null,
+    recovered?.duration_seconds != null
+      ? Math.round(recovered.duration_seconds / 60)
+      : set.duration_seconds != null
+        ? Math.round(set.duration_seconds / 60)
+        : null,
   );
-  const [level, setLevel] = useState(set.level);
-  const [done, setDone] = useState(set.done);
+  const [level, setLevel] = useState(recovered?.level ?? set.level);
+  const [done, setDone] = useState(recovered?.done ?? set.done);
   const [deleting, setDeleting] = useState(false);
 
-  const pending = useRef<SetPatch>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef<Promise<boolean> | null>(null);
 
@@ -49,19 +60,10 @@ export function SetRow({
     // If the debounce already started a request, wait for it before deciding
     // there is nothing left to save. This makes Finish Workout a real barrier.
     if (inFlight.current) await inFlight.current;
-    const patch = pending.current;
-    pending.current = {};
-    if (Object.keys(patch).length === 0) return true;
     const request = (async () => {
-      try {
-        await updateSet(sb, set.id, patch);
-        return true;
-      } catch {
-        // Keep the change locally and re-queue it so the next edit retries.
-        pending.current = { ...patch, ...pending.current };
-        toast("Couldn't save — kept locally, will retry.", "error");
-        return false;
-      }
+      const saved = await flushPendingSet(sb, set.id);
+      if (!saved) toast("Couldn't save — kept on this device and will retry.", "error");
+      return saved;
     })();
     inFlight.current = request;
     const saved = await request;
@@ -71,11 +73,11 @@ export function SetRow({
 
   const schedule = useCallback(
     (patch: SetPatch) => {
-      pending.current = { ...pending.current, ...patch };
+      queueSetPatch(sessionId, set.id, patch);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => void flush(), 600);
     },
-    [flush],
+    [flush, sessionId, set.id],
   );
 
   // The parent registers every row as a save barrier before finishing. We also
@@ -91,7 +93,7 @@ export function SetRow({
   const toggleDone = () => {
     const next = !done;
     setDone(next);
-    pending.current = { ...pending.current, done: next };
+    queueSetPatch(sessionId, set.id, { done: next });
     void flush();
   };
 
