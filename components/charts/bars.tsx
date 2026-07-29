@@ -44,10 +44,10 @@ export function VBars({ data, unit = "", height = 120 }: { data: Datum[]; unit?:
     <div>
       <div className="flex items-end gap-1.5" style={{ height }}>
         {data.map((d, i) => (
-          <div key={i} className="flex flex-1 flex-col items-center justify-end" title={`${d.value}${unit}`}>
+          <div key={i} className="flex h-full flex-1 flex-col items-center justify-end" title={`${d.value}${unit}`}>
             <div
               className="w-full rounded-t bg-accent/80"
-              style={{ height: `${Math.max(2, (d.value / max) * 100)}%` }}
+              style={{ height: `${Math.max(2, (d.value / max) * 100)}%`, backgroundColor: "var(--accent)" }}
             />
           </div>
         ))}
