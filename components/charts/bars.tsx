@@ -1,6 +1,6 @@
 "use client";
 
-interface Datum {
+export interface Datum {
   label: string;
   value: number;
 }
@@ -35,21 +35,67 @@ export function HBars({ data, unit = "" }: { data: Datum[]; unit?: string }) {
 }
 
 /** Vertical bars — good for a time series (weekly volume). */
-export function VBars({ data, unit = "", height = 120 }: { data: Datum[]; unit?: string; height?: number }) {
+export function VBars<T extends Datum>({
+  data,
+  unit = "",
+  height = 120,
+  selectedIndex,
+  onSelect,
+  getAriaLabel,
+}: {
+  data: T[];
+  unit?: string;
+  height?: number;
+  selectedIndex?: number;
+  onSelect?: (index: number) => void;
+  getAriaLabel?: (datum: T, index: number) => string;
+}) {
   if (data.length === 0) {
     return <p className="py-6 text-center text-sm text-muted-foreground">No data yet.</p>;
   }
   const max = Math.max(...data.map((d) => d.value)) || 1;
+  const isSelectable = onSelect !== undefined;
+
+  const selectRelativeBar = (index: number, offset: number) => {
+    if (!onSelect) return;
+    onSelect(Math.min(data.length - 1, Math.max(0, index + offset)));
+  };
+
   return (
     <div>
       <div className="flex items-end gap-1.5" style={{ height }}>
         {data.map((d, i) => (
-          <div key={i} className="flex h-full flex-1 flex-col items-center justify-end" title={`${d.value}${unit}`}>
+          <button
+            key={d.label}
+            type="button"
+            onClick={() => onSelect?.(i)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                selectRelativeBar(i, -1);
+              }
+              if (event.key === "ArrowRight") {
+                event.preventDefault();
+                selectRelativeBar(i, 1);
+              }
+            }}
+            className={`flex h-full flex-1 flex-col items-center justify-end rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
+              isSelectable ? "cursor-pointer" : "cursor-default"
+            }`}
+            aria-label={getAriaLabel?.(d, i) ?? `${d.label}: ${d.value}${unit}`}
+            aria-pressed={isSelectable ? selectedIndex === i : undefined}
+            disabled={!isSelectable}
+            title={`${d.value}${unit}`}
+          >
             <div
-              className="w-full rounded-t bg-accent/80"
-              style={{ height: `${Math.max(2, (d.value / max) * 100)}%`, backgroundColor: "var(--accent)" }}
+              className="w-full rounded-t transition-opacity"
+              style={{
+                height: `${Math.max(2, (d.value / max) * 100)}%`,
+                backgroundColor: "var(--accent)",
+                opacity: selectedIndex === i ? 1 : 0.72,
+              }}
             />
-          </div>
+          </button>
         ))}
       </div>
       <div className="mt-1 flex gap-1.5">

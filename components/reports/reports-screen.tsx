@@ -44,6 +44,7 @@ export function ReportsScreen({ embedded = false }: { embedded?: boolean } = {})
   const [weeks, setWeeks] = useState(8);
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<Report | null>(null);
+  const [selectedWeekIndex, setSelectedWeekIndex] = useState<number | null>(null);
   const [bodyweight, setBodyweight] = useState<{ label: string; value: number }[]>([]);
 
   const load = useCallback(async () => {
@@ -54,7 +55,9 @@ export function ReportsScreen({ embedded = false }: { embedded?: boolean } = {})
       const since = toISODate(firstMonday);
 
       const [rows, health] = await Promise.all([getSetsSince(sb, since), getDailyHealth(sb, 365)]);
-      setReport(buildReport(rows, weeks));
+      const nextReport = buildReport(rows, weeks);
+      setReport(nextReport);
+      setSelectedWeekIndex(nextReport.weeklyVolume.length - 1);
       setBodyweight(
         health
           .filter((entry) => entry.bodyweight != null && entry.recorded_on >= since)
@@ -75,13 +78,18 @@ export function ReportsScreen({ embedded = false }: { embedded?: boolean } = {})
     void load();
   }, [load]);
 
+  const selectPeriod = (nextWeeks: number) => {
+    setSelectedWeekIndex(null);
+    setWeeks(nextWeeks);
+  };
+
   return (
     <>
       {!embedded ? (
-        <PageHeader title="Reports" right={<PeriodPicker weeks={weeks} setWeeks={setWeeks} />} />
+        <PageHeader title="Reports" right={<PeriodPicker weeks={weeks} setWeeks={selectPeriod} />} />
       ) : (
         <div className="flex justify-end px-4 pb-3">
-          <PeriodPicker weeks={weeks} setWeeks={setWeeks} />
+          <PeriodPicker weeks={weeks} setWeeks={selectPeriod} />
         </div>
       )}
 
@@ -98,7 +106,18 @@ export function ReportsScreen({ embedded = false }: { embedded?: boolean } = {})
           </div>
 
           <Section title="Weekly volume">
-            <VBars data={report.weeklyVolume} unit={` ${WEIGHT_UNIT}`} />
+            <VBars
+              data={report.weeklyVolume}
+              unit={` ${WEIGHT_UNIT}`}
+              selectedIndex={selectedWeekIndex ?? undefined}
+              onSelect={setSelectedWeekIndex}
+              getAriaLabel={(week) =>
+                `Week of ${formatWeekStart(week.weekStart)}: ${formatVolume(week.value)} ${WEIGHT_UNIT}, ${week.sessions} ${week.sessions === 1 ? "session" : "sessions"}`
+              }
+            />
+            {selectedWeekIndex != null && report.weeklyVolume[selectedWeekIndex] ? (
+              <WeeklyVolumeDetail week={report.weeklyVolume[selectedWeekIndex]} />
+            ) : null}
           </Section>
 
           <Section title="Volume by muscle">
@@ -112,6 +131,31 @@ export function ReportsScreen({ embedded = false }: { embedded?: boolean } = {})
       )}
     </>
   );
+}
+
+function WeeklyVolumeDetail({
+  week,
+}: {
+  week: Report["weeklyVolume"][number];
+}) {
+  return (
+    <div className="mt-4 rounded-lg bg-surface-2 px-3 py-2.5" aria-live="polite">
+      <p className="text-xs font-medium text-foreground">Week of {formatWeekStart(week.weekStart)}</p>
+      <p className="mt-0.5 text-sm text-muted-foreground">
+        <span className="tabular font-medium text-foreground">{formatVolume(week.value)} {WEIGHT_UNIT}</span>
+        {" · "}
+        {week.sessions} {week.sessions === 1 ? "session" : "sessions"}
+      </p>
+    </div>
+  );
+}
+
+function formatWeekStart(weekStart: string): string {
+  return parseISODate(weekStart).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function formatVolume(value: number): string {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {

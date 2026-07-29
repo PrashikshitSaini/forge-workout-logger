@@ -15,7 +15,7 @@ export interface Report {
   sessions: number;
   totalVolume: number;
   avgSessionsPerWeek: number;
-  weeklyVolume: { label: string; value: number }[];
+  weeklyVolume: { label: string; value: number; weekStart: string; sessions: number }[];
   muscleVolume: { label: string; value: number }[];
 }
 
@@ -35,14 +35,22 @@ export function buildReport(rows: ReportSetRow[], weeks: number, today = new Dat
 
   // Weekly volume buckets (oldest → newest).
   const thisMonday = mondayOf(today);
-  const buckets: { label: string; value: number }[] = [];
+  const buckets: { label: string; value: number; weekStart: string; sessions: number }[] = [];
   const keyIndex = new Map<string, number>();
+  const sessionDays = new Map<string, Set<string>>();
   for (let i = weeks - 1; i >= 0; i--) {
     const d = new Date(thisMonday);
     d.setDate(d.getDate() - i * 7);
-    keyIndex.set(toISODate(d), buckets.length);
-    buckets.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, value: 0 });
+    const weekStart = toISODate(d);
+    keyIndex.set(weekStart, buckets.length);
+    sessionDays.set(weekStart, new Set());
+    buckets.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, value: 0, weekStart, sessions: 0 });
   }
+  for (const r of rows) {
+    const weekStart = toISODate(mondayOf(parseISODate(r.performed_on)));
+    sessionDays.get(weekStart)?.add(r.performed_on);
+  }
+  for (const bucket of buckets) bucket.sessions = sessionDays.get(bucket.weekStart)?.size ?? 0;
   for (const r of strength) {
     const wk = toISODate(mondayOf(parseISODate(r.performed_on)));
     const idx = keyIndex.get(wk);
