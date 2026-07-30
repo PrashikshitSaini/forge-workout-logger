@@ -56,6 +56,7 @@ test("single quick path lowers provider work without bypassing verification", ()
 test("meal research defaults to GPT-5.6 Luna", () => {
   assert.match(analyzer, /openai\/gpt-5\.6-luna/);
   assert.doesNotMatch(analyzer, /process\.env\.MEAL_LOGGER_MODEL/);
+  assert.doesNotMatch(analyzer, /temperature:/);
 });
 
 test("provider failures expose a safe category without provider response details", () => {

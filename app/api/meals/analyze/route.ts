@@ -183,7 +183,6 @@ export async function POST(req: Request) {
         ],
         response_format: { type: "json_object" },
         reasoning: { effort: "low", exclude: true },
-        temperature: 0.1,
         max_tokens: budget.maxTokens,
       }),
     });
