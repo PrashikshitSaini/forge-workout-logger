@@ -45,15 +45,15 @@ test("forward corrective migration fixes databases that already ran 0009", () =>
   assert.match(correctiveSql, /revoke all on function[\s\S]*from public, anon, authenticated, service_role/i);
 });
 
-test("single quick path is a direct estimate with server-side macro validation", () => {
+test("single quick path uses one web context with server-side macro validation", () => {
   assert.doesNotMatch(analyzer, /body\.fast/);
-  assert.match(analyzer, /maxTokens = 1_200/);
+  assert.match(analyzer, /requestMealResearch/);
   assert.doesNotMatch(analyzer, /openrouter:web_search/);
   assert.match(analyzer, /scaleResearchedAnalysis\(analysis, extractCitations/);
 });
 
-test("meal research uses the direct Gemini estimate path", () => {
-  assert.match(analyzer, /google\/gemini-3\.5-flash/);
+test("meal research uses DeepSeek V4 Pro with a one-shot web lookup", () => {
+  assert.match(fs.readFileSync(new URL("../lib/meal-research-provider.ts", import.meta.url), "utf8"), /deepseek\/deepseek-v4-pro/);
   assert.doesNotMatch(analyzer, /process\.env\.MEAL_LOGGER_MODEL/);
   assert.doesNotMatch(analyzer, /temperature:/);
   assert.doesNotMatch(analyzer, /response_format:/);

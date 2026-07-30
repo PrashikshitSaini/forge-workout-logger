@@ -53,7 +53,7 @@ cp .env.example .env.local
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | same page (anon/public key) |
 | `OPENROUTER_API_KEY` | [openrouter.ai/keys](https://openrouter.ai/keys) — **server-side only** |
 | `OPENROUTER_MODEL` | any model id, e.g. `openai/gpt-4o-mini` (default) |
-| `MEAL_LOGGER_MODEL` | no longer used; meal research is fixed to `google/gemini-3.5-flash` for bounded native web search |
+| `MEAL_LOGGER_MODEL` | no longer used; meal research is fixed to `deepseek/deepseek-v4-pro` with one web lookup |
 | `NEXT_PUBLIC_SITE_URL` | your URL (used in OpenRouter attribution) |
 
 ### 3. Run

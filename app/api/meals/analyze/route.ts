@@ -5,6 +5,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { findSimilarMeal } from "@/lib/meal-duplicates";
+import { requestMealResearch } from "@/lib/meal-research-provider";
 import {
   ResearchAnalysisSchema,
   scaleResearchedAnalysis,
@@ -21,15 +22,16 @@ const RequestSchema = z.object({
   allow_duplicate: z.boolean().optional(),
 });
 
-const SYSTEM_PROMPT = `You are the fast meal-estimation engine inside ${APP_NAME}.
-Turn the user's natural-language meal into an itemized macro log immediately.
+const SYSTEM_PROMPT = `You are the meal lookup and estimation engine inside ${APP_NAME}.
+Turn the user's natural-language meal into an itemized macro log immediately, using the supplied web results when useful.
 
 Rules:
-- Do not browse or call tools. Use your nutrition knowledge to give the closest practical estimate in one response.
+- The web context is provided once per request. Use exact product-label facts when they appear; otherwise use your best practical nutrition estimate.
 - Include only foods, quantities, oils, sauces, and cooking ingredients the user mentions.
 - If preparation or quantity is unclear, use an ordinary serving and state that short assumption.
-- Never refuse because a product cannot be identified. Use confidence "low" when estimating.
-- For every item, set source_url, source_title, and evidence to null. Use the consumed quantity for both consumed and source amount/unit so the server stores the estimate directly.
+- Never ask for more information and never refuse because a product cannot be identified. Use confidence "low" when estimating.
+- If the web results support an item, use its direct URL, title, and a short quoted nutrition excerpt. Otherwise set source_url, source_title, and evidence to null.
+- Use the consumed quantity for both consumed and source amount/unit when a serving conversion is uncertain so the server stores the closest practical estimate.
 - Use one of: g, ml, oz, cup, tbsp, tsp, piece, slice, container, package, serving.
 
 Output ONLY one JSON object with this exact shape:
@@ -134,29 +136,14 @@ export async function POST(req: Request) {
 
   try {
     // Keep nutrition research independent from the conversational coach model.
-    // A direct Gemini estimate is the fast path. Web search made this simple
-    // action unbounded and prevented users from logging meals quickly.
-    const model = "google/gemini-3.5-flash";
-    const maxTokens = 1_200;
-    const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
-        "X-Title": APP_NAME,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: `Log this meal for ${body.logged_on}:\n\n${body.text}`,
-          },
-        ],
-        max_tokens: maxTokens,
-      }),
+    const aiResponse = await requestMealResearch({
+      apiKey,
+      siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+      title: APP_NAME,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: `Log this meal for ${body.logged_on}:\n\n${body.text}` },
+      ],
     });
 
     if (!aiResponse.ok) {
