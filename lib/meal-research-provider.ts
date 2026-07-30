@@ -1,4 +1,4 @@
-export const MEAL_RESEARCH_MODEL = "deepseek/deepseek-v4-pro";
+export const MEAL_RESEARCH_MODEL = "google/gemini-3.5-flash";
 
 export interface MealResearchMessage {
   role: "system" | "user";

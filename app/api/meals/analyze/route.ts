@@ -32,6 +32,7 @@ Rules:
 - Never ask for more information and never refuse because a product cannot be identified. Use confidence "low" when estimating.
 - If the web results support an item, use its direct URL, title, and a short quoted nutrition excerpt. Otherwise set source_url, source_title, and evidence to null.
 - Use the consumed quantity for both consumed and source amount/unit when a serving conversion is uncertain so the server stores the closest practical estimate.
+- When no label serving is available, use "1 serving" for source_serving. Never leave a required field out.
 - Use one of: g, ml, oz, cup, tbsp, tsp, piece, slice, container, package, serving.
 
 Output ONLY one JSON object with this exact shape:
@@ -135,7 +136,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    // Keep nutrition research independent from the conversational coach model.
+    // Gemini Flash has native web search and is deliberately used here instead
+    // of a long-horizon reasoning model: this is a short product lookup.
     const aiResponse = await requestMealResearch({
       apiKey,
       siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",

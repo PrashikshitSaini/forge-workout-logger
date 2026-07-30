@@ -52,8 +52,8 @@ test("single quick path uses one web context with server-side macro validation",
   assert.match(analyzer, /scaleResearchedAnalysis\(analysis, extractCitations/);
 });
 
-test("meal research uses DeepSeek V4 Pro with a one-shot web lookup", () => {
-  assert.match(fs.readFileSync(new URL("../lib/meal-research-provider.ts", import.meta.url), "utf8"), /deepseek\/deepseek-v4-pro/);
+test("meal research uses Gemini Flash with a one-shot web lookup", () => {
+  assert.match(fs.readFileSync(new URL("../lib/meal-research-provider.ts", import.meta.url), "utf8"), /google\/gemini-3\.5-flash/);
   assert.doesNotMatch(analyzer, /process\.env\.MEAL_LOGGER_MODEL/);
   assert.doesNotMatch(analyzer, /temperature:/);
   assert.doesNotMatch(analyzer, /response_format:/);
