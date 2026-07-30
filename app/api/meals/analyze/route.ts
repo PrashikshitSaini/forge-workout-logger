@@ -147,7 +147,7 @@ export async function POST(req: Request) {
     const model = process.env.MEAL_LOGGER_MODEL || "openai/gpt-5.6-luna";
     // One quick path: concise research work, followed by the same citation and
     // serving verification before anything is stored.
-    const budget = { maxResults: 3, maxTotalResults: 12, maxFetches: 6, maxContentTokens: 10_000, maxTokens: 1_800 };
+    const budget = { maxResults: 3, maxTotalResults: 12, maxTokens: 1_800 };
     const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -169,21 +169,16 @@ export async function POST(req: Request) {
           {
             type: "openrouter:web_search",
             parameters: {
-              engine: "native",
+              // "auto" uses native search where Luna supports it and otherwise
+              // falls back to OpenRouter's compatible search provider. Forcing
+              // native search made the whole request fail when that capability
+              // was unavailable on the routed provider.
+              engine: "auto",
               max_results: budget.maxResults,
               max_total_results: budget.maxTotalResults,
             },
           },
-          {
-            type: "openrouter:web_fetch",
-            parameters: {
-              engine: "openrouter",
-              max_uses: budget.maxFetches,
-              max_content_tokens: budget.maxContentTokens,
-            },
-          },
         ],
-        tool_choice: "required",
         response_format: { type: "json_object" },
         reasoning: { effort: "low", exclude: true },
         temperature: 0.1,

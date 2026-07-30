@@ -47,7 +47,9 @@ test("forward corrective migration fixes databases that already ran 0009", () =>
 
 test("single quick path lowers provider work without bypassing verification", () => {
   assert.doesNotMatch(analyzer, /body\.fast/);
-  assert.match(analyzer, /maxResults: 3, maxTotalResults: 12, maxFetches: 6/);
+  assert.match(analyzer, /maxResults: 3, maxTotalResults: 12, maxTokens: 1_800/);
+  assert.match(analyzer, /engine: "auto"/);
+  assert.doesNotMatch(analyzer, /tool_choice: "required"/);
   assert.match(analyzer, /scaleResearchedAnalysis\(analysis, extractCitations/);
 });
 
