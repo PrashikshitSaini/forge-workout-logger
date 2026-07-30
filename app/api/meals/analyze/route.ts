@@ -144,9 +144,10 @@ export async function POST(req: Request) {
     // Keep nutrition research independent from the conversational coach model.
     // Luna is the fast default for conversational meal logging. The server still
     // verifies citations and serving conversions before storing nutrition.
-    // Meal logging has one deliberately fixed model. Do not let an older
-    // deployment environment override this into a different provider/model.
-    const model = "openai/gpt-5.6-luna";
+    // Gemini's native web-search endpoint is the reliable fast path for meal
+    // lookup. Keep it fixed so an old deployment environment cannot override
+    // the request into a model with incompatible server-tool behavior.
+    const model = "google/gemini-3.5-flash";
     // One quick path: concise research work, followed by the same citation and
     // serving verification before anything is stored.
     const budget = { maxResults: 3, maxTotalResults: 12, maxTokens: 1_800 };
@@ -178,9 +179,13 @@ export async function POST(req: Request) {
               engine: "auto",
               max_results: budget.maxResults,
               max_total_results: budget.maxTotalResults,
+              max_uses: 3,
             },
           },
         ],
+        // OpenRouter otherwise allows up to 30 server-tool steps. Meal logging
+        // needs one quick lookup pass, not an open-ended research loop.
+        max_tool_calls: 3,
         max_tokens: budget.maxTokens,
       }),
     });

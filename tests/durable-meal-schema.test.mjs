@@ -53,12 +53,14 @@ test("single quick path lowers provider work without bypassing verification", ()
   assert.match(analyzer, /scaleResearchedAnalysis\(analysis, extractCitations/);
 });
 
-test("meal research defaults to GPT-5.6 Luna", () => {
-  assert.match(analyzer, /openai\/gpt-5\.6-luna/);
+test("meal research uses the bounded Gemini web-search path", () => {
+  assert.match(analyzer, /google\/gemini-3\.5-flash/);
   assert.doesNotMatch(analyzer, /process\.env\.MEAL_LOGGER_MODEL/);
   assert.doesNotMatch(analyzer, /temperature:/);
   assert.doesNotMatch(analyzer, /response_format:/);
   assert.doesNotMatch(analyzer, /reasoning:/);
+  assert.match(analyzer, /max_uses: 3/);
+  assert.match(analyzer, /max_tool_calls: 3/);
 });
 
 test("provider failures expose a safe category without provider response details", () => {
