@@ -5,6 +5,7 @@ import test from "node:test";
 const sql = fs.readFileSync(new URL("../supabase/migrations/0009_durable_meals_and_reuse.sql", import.meta.url), "utf8");
 const analyzer = fs.readFileSync(new URL("../app/api/meals/analyze/route.ts", import.meta.url), "utf8");
 const correctiveSql = fs.readFileSync(new URL("../supabase/migrations/0010_fix_durable_meal_rpc_privileges.sql", import.meta.url), "utf8");
+const disableBackgroundSql = fs.readFileSync(new URL("../supabase/migrations/0011_disable_background_meal_research.sql", import.meta.url), "utf8");
 
 test("durable schema has idempotency, leases, and exactly-once finalization guard", () => {
   assert.match(sql, /unique \(user_id, idempotency_key\)/);
@@ -44,8 +45,17 @@ test("forward corrective migration fixes databases that already ran 0009", () =>
   assert.match(correctiveSql, /revoke all on function[\s\S]*from public, anon, authenticated, service_role/i);
 });
 
-test("fast fallback lowers provider work without bypassing verification", () => {
-  assert.match(analyzer, /body\.fast/);
+test("single quick path lowers provider work without bypassing verification", () => {
+  assert.doesNotMatch(analyzer, /body\.fast/);
   assert.match(analyzer, /maxResults: 3, maxTotalResults: 12, maxFetches: 6/);
   assert.match(analyzer, /scaleResearchedAnalysis\(analysis, extractCitations/);
+});
+
+test("meal research defaults to GPT-5.6 Luna", () => {
+  assert.match(analyzer, /openai\/gpt-5\.6-luna/);
+});
+
+test("forward migration removes unfinished background research and worker functions", () => {
+  assert.match(disableBackgroundSql, /delete from meal_research_jobs[\s\S]*queued', 'running', 'retry_wait/i);
+  assert.match(disableBackgroundSql, /drop function if exists claim_due_meal_research_job/i);
 });

@@ -14,18 +14,13 @@ import { Button } from "@/components/ui/button";
 import { Label, Textarea } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
-import type { MealResearchJob, ReusableMeal } from "@/lib/meal-jobs";
+import type { ReusableMeal } from "@/lib/meal-jobs";
 
 interface AnalyzeResponse {
   error?: string;
   title?: string;
   totals?: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
   duplicate?: { meal_id: string; title: string };
-}
-
-async function requestFingerprint(value: string): Promise<string> {
-  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(bytes)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function MealsScreen() {
@@ -38,7 +33,6 @@ export function MealsScreen() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [updatingMeal, setUpdatingMeal] = useState<MealWithItems | null>(null);
   const [duplicate, setDuplicate] = useState<NonNullable<AnalyzeResponse["duplicate"]> | null>(null);
-  const [jobs, setJobs] = useState<MealResearchJob[]>([]);
   const [reusableMeals, setReusableMeals] = useState<ReusableMeal[]>([]);
   const [copyPreview, setCopyPreview] = useState<{ kind: "reusable" | "history"; id: string; title: string; calories: number; status?: string } | null>(null);
 
@@ -47,8 +41,7 @@ export function MealsScreen() {
     try {
       const loadedMeals = await getMeals(sb, 100);
       setMeals(loadedMeals);
-      const [jobResponse, reusableResponse] = await Promise.all([fetch("/api/meals/jobs").catch(() => null), fetch("/api/meals/reusable").catch(() => null)]);
-      if (jobResponse?.ok) setJobs((await jobResponse.json() as { jobs: MealResearchJob[] }).jobs);
+      const reusableResponse = await fetch("/api/meals/reusable").catch(() => null);
       if (reusableResponse?.ok) setReusableMeals((await reusableResponse.json() as { reusable_meals: ReusableMeal[] }).reusable_meals);
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -80,7 +73,7 @@ export function MealsScreen() {
   }, [loggedOn]);
   const yesterdayMeals = useMemo(() => meals.filter((meal) => meal.logged_on === yesterday), [meals, yesterday]);
 
-  async function handleLegacyAnalyze(options: { mealId?: string; allowDuplicate?: boolean; fast?: boolean } = {}) {
+  async function handleAnalyze(options: { mealId?: string; allowDuplicate?: boolean } = {}) {
     const mealText = text.trim();
     if (!mealText || analyzing) return;
     setAnalyzing(true);
@@ -94,7 +87,6 @@ export function MealsScreen() {
           logged_on: loggedOn,
           ...(options.mealId ? { meal_id: options.mealId } : {}),
           ...(options.allowDuplicate ? { allow_duplicate: true } : {}),
-          ...(options.fast ? { fast: true } : {}),
         }),
       });
       const json = (await res.json().catch(() => ({}))) as AnalyzeResponse;
@@ -116,48 +108,6 @@ export function MealsScreen() {
     }
   }
 
-  async function handleAnalyze(options: { mealId?: string; allowDuplicate?: boolean } = {}) {
-    if (options.allowDuplicate) return handleLegacyAnalyze(options);
-    const mealText = text.trim();
-    if (!mealText || analyzing) return;
-    if (!options.mealId) {
-      const normalized = mealText.toLocaleLowerCase();
-      const reusableMatches = reusableMeals.filter((meal) => normalized.includes(meal.name.toLocaleLowerCase()));
-      if (reusableMatches.length === 1) {
-        const meal = reusableMatches[0];
-        setCopyPreview({ kind: "reusable", id: meal.id, title: meal.name, calories: Number((meal.items as Array<{ calories?: number }>).reduce((sum, item) => sum + Number(item.calories ?? 0), 0)), status: meal.nutrition_status });
-        return;
-      }
-      const sameYesterday = normalized.match(/^same\s+(breakfast|lunch|dinner|snack|meal)\s+as\s+yesterday$/i);
-      if (sameYesterday) {
-        const matches = yesterdayMeals.filter((meal) => meal.meal_type === sameYesterday[1].toLocaleLowerCase());
-        if (matches.length === 1) {
-          const meal = matches[0];
-          setCopyPreview({ kind: "history", id: meal.id, title: meal.title, calories: Number(mealMacros([meal]).calories), status: meal.nutrition_status });
-          return;
-        }
-        if (matches.length > 1) { toast("Choose the matching meal from yesterday below.", "error"); return; }
-      }
-    }
-    setAnalyzing(true);
-    try {
-      const requestHash = await requestFingerprint(`${loggedOn}:${options.mealId ?? "new"}:${mealText}`);
-      const storageKey = "forge:pending-meal-job";
-      const saved = window.localStorage.getItem(storageKey);
-      const pending = saved ? JSON.parse(saved) as { requestHash?: string; idempotencyKey?: string } : null;
-      const idempotencyKey = pending?.requestHash === requestHash && pending.idempotencyKey ? pending.idempotencyKey : crypto.randomUUID();
-      window.localStorage.setItem(storageKey, JSON.stringify({ requestHash, idempotencyKey }));
-      const response = await fetch("/api/meals/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idempotency_key: idempotencyKey, request_hash: requestHash, text: mealText, logged_on: loggedOn, client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", ...(options.mealId ? { meal_id: options.mealId } : {}) }) });
-      const json = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(json.error || "Couldn't submit meal research.");
-      window.localStorage.removeItem(storageKey);
-      setText(""); setUpdatingMeal(null); await load();
-      toast("Meal submitted. Forge will keep researching if you close the app.", "success");
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Couldn't submit meal research. You can use the immediate fallback below.", "error");
-    } finally { setAnalyzing(false); }
-  }
-
   async function confirmCopy() {
     if (!copyPreview) return;
     const body = copyPreview.kind === "reusable" ? { reusable_id: copyPreview.id, logged_on: loggedOn } : { source_meal_id: copyPreview.id, logged_on: loggedOn };
@@ -172,12 +122,6 @@ export function MealsScreen() {
     const response = await fetch("/api/meals/reusable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ meal_id: meal.id, name }) });
     if (!response.ok) { toast("Couldn't save reusable meal.", "error"); return; }
     await load(); toast("Saved for reuse.", "success");
-  }
-
-  async function reviewJob(job: MealResearchJob, action: "discard" | "save_estimate") {
-    const response = await fetch(`/api/meals/jobs/${job.id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
-    if (!response.ok) { toast("Couldn't update this review item.", "error"); return; }
-    await load(); if (action === "save_estimate") window.dispatchEvent(new Event(DATA_CHANGED_EVENT));
   }
 
   function handleEdit(meal: MealWithItems) {
@@ -292,9 +236,6 @@ export function MealsScreen() {
           <p className="text-xs leading-relaxed text-muted-foreground">
             Forge researches the best available label, scales it to your serving, and always keeps the source confidence visible.
           </p>
-          <button type="button" className="text-xs text-muted underline" onClick={() => void handleLegacyAnalyze(updatingMeal ? { mealId: updatingMeal.id, fast: true } : { fast: true })} disabled={!text.trim() || analyzing}>
-            Use faster immediate research fallback
-          </button>
         </section>
 
         {copyPreview ? <section className="space-y-2 rounded-xl border border-accent/40 bg-accent/10 p-4"><p className="text-sm font-medium">Matched {copyPreview.title}</p><p className="text-xs text-muted">{copyPreview.calories} cal{copyPreview.status ? ` · ${copyPreview.status}` : ""}. Review before saving.</p><div className="flex gap-2"><Button size="sm" onClick={() => void confirmCopy()}>Use this meal</Button><Button size="sm" variant="secondary" onClick={() => setCopyPreview(null)}>Cancel</Button></div></section> : null}
@@ -303,7 +244,6 @@ export function MealsScreen() {
 
         {yesterdayMeals.length ? <section className="space-y-2"><h2 className="text-xs font-medium uppercase tracking-wide text-muted">Same as yesterday</h2>{yesterdayMeals.map((meal) => <button key={meal.id} type="button" className="w-full rounded-lg border border-border bg-surface p-3 text-left text-sm" onClick={() => setCopyPreview({ kind: "history", id: meal.id, title: meal.title, calories: Number(mealMacros([meal]).calories), status: meal.nutrition_status })}>{meal.meal_type} · {meal.title}</button>)}</section> : null}
 
-        {jobs.some((job) => job.status !== "succeeded" && job.status !== "discarded") ? <section className="space-y-2"><h2 className="text-xs font-medium uppercase tracking-wide text-muted">Meal research</h2>{jobs.filter((job) => job.status !== "succeeded" && job.status !== "discarded").map((job) => <div key={job.id} className="rounded-lg border border-border bg-surface p-3 text-sm"><p className="font-medium">{job.status === "needs_review" ? "Needs review" : job.status === "retry_wait" ? "Retrying automatically" : "Researching"}</p><p className="mt-1 text-xs text-muted">{job.original_input}</p>{job.status === "needs_review" ? <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="secondary" onClick={() => { setText(job.original_input); setLoggedOn(job.logged_on); }}>Edit & retry</Button>{job.draft_analysis ? <Button size="sm" onClick={() => void reviewJob(job, "save_estimate")}>Save estimate</Button> : null}<Button size="sm" variant="ghost" onClick={() => void reviewJob(job, "discard")}>Discard</Button></div> : null}</div>)}</section> : null}
 
         <section className="space-y-3">
           <div className="flex items-end justify-between gap-3">

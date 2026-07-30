@@ -19,7 +19,6 @@ const RequestSchema = z.object({
   logged_on: z.string().regex(DATE_RE),
   meal_id: z.string().uuid().optional(),
   allow_duplicate: z.boolean().optional(),
-  fast: z.boolean().optional(),
 });
 
 const SYSTEM_PROMPT = `You are the nutrition research engine inside ${APP_NAME}.
@@ -143,14 +142,12 @@ export async function POST(req: Request) {
 
   try {
     // Keep nutrition research independent from the conversational coach model.
-    // Gemini 3.5 Flash is the quality/cost balance for product research. Native
-    // Google search finds the product, then web_fetch opens the exact label page.
-    const model = process.env.MEAL_LOGGER_MODEL || "google/gemini-3.5-flash";
-    // The explicit immediate fallback can trade source breadth for response
-    // time. It still uses the identical citation and serving verification below.
-    const budget = body.fast
-      ? { maxResults: 3, maxTotalResults: 12, maxFetches: 6, maxContentTokens: 10_000, maxTokens: 1_800 }
-      : { maxResults: 6, maxTotalResults: 30, maxFetches: 12, maxContentTokens: 20_000, maxTokens: 2_400 };
+    // Luna is the fast default for conversational meal logging. The server still
+    // verifies citations and serving conversions before storing nutrition.
+    const model = process.env.MEAL_LOGGER_MODEL || "openai/gpt-5.6-luna";
+    // One quick path: concise research work, followed by the same citation and
+    // serving verification before anything is stored.
+    const budget = { maxResults: 3, maxTotalResults: 12, maxFetches: 6, maxContentTokens: 10_000, maxTokens: 1_800 };
     const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
