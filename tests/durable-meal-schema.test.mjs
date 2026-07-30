@@ -57,6 +57,8 @@ test("meal research defaults to GPT-5.6 Luna", () => {
   assert.match(analyzer, /openai\/gpt-5\.6-luna/);
   assert.doesNotMatch(analyzer, /process\.env\.MEAL_LOGGER_MODEL/);
   assert.doesNotMatch(analyzer, /temperature:/);
+  assert.doesNotMatch(analyzer, /response_format:/);
+  assert.doesNotMatch(analyzer, /reasoning:/);
 });
 
 test("provider failures expose a safe category without provider response details", () => {
