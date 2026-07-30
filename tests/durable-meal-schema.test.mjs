@@ -58,6 +58,13 @@ test("meal research defaults to GPT-5.6 Luna", () => {
   assert.doesNotMatch(analyzer, /process\.env\.MEAL_LOGGER_MODEL/);
 });
 
+test("provider failures expose a safe category without provider response details", () => {
+  assert.match(analyzer, /provider_status: aiResponse\.status/);
+  assert.match(analyzer, /aiResponse\.status === 402/);
+  assert.match(analyzer, /needs available provider credit/);
+  assert.doesNotMatch(analyzer, /error: await aiResponse\.text/);
+});
+
 test("forward migration removes unfinished background research and worker functions", () => {
   assert.match(disableBackgroundSql, /delete from meal_research_jobs[\s\S]*queued', 'running', 'retry_wait/i);
   assert.match(disableBackgroundSql, /drop function if exists claim_due_meal_research_job/i);

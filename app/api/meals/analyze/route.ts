@@ -190,7 +190,17 @@ export async function POST(req: Request) {
 
     if (!aiResponse.ok) {
       console.error("Meal research error", aiResponse.status, await aiResponse.text().catch(() => ""));
-      return NextResponse.json({ error: "Meal research is unavailable right now." }, { status: 502 });
+      const error =
+        aiResponse.status === 400
+          ? "Meal research rejected this request. Please try again in a moment."
+          : aiResponse.status === 401 || aiResponse.status === 403
+            ? "Meal research connection was rejected."
+            : aiResponse.status === 402
+              ? "Meal research needs available provider credit."
+              : aiResponse.status === 429
+                ? "Meal research is busy. Please try again shortly."
+                : "Meal research is temporarily unavailable.";
+      return NextResponse.json({ error, provider_status: aiResponse.status }, { status: 502 });
     }
 
     const payload = (await aiResponse.json()) as {
