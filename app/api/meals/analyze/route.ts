@@ -21,24 +21,16 @@ const RequestSchema = z.object({
   allow_duplicate: z.boolean().optional(),
 });
 
-const SYSTEM_PROMPT = `You are the nutrition research engine inside ${APP_NAME}.
-The user describes a meal naturally. Turn it into an itemized macro log.
+const SYSTEM_PROMPT = `You are the fast meal-estimation engine inside ${APP_NAME}.
+Turn the user's natural-language meal into an itemized macro log immediately.
 
-Research rules:
-- You MUST web-search every distinct item before answering. Search for the exact product plus "nutrition facts calories protein carbs fat serving size". Group items into one query only when that still finds each exact label.
-- Prefer the brand/manufacturer nutrition page, retailer product label, USDA FoodData Central, or another primary nutrition-label source. Avoid blogs, social media, recipe sites, and unsourced calorie databases.
-- Research the SOURCE LABEL serving first. Return its unscaled macros in "label" and its serving text in "source_serving".
-- Normalize the user's consumed quantity and one source serving into the SAME unit using "consumed_amount"/"consumed_unit" and "source_amount"/"source_unit". Allowed units: g, ml, oz, cup, tbsp, tsp, piece, slice, container, package, serving.
-- Prefer a unit explicitly present in both the user's quantity and source serving. Example: user ate 1 cup and label says 1/2 cup (130g) → consumed_amount 1 cup, source_amount 0.5 cup. User ate 100g → consumed_amount 100g, source_amount 130g.
-- If the source does not support a same-unit conversion, search for another authoritative source. Do not estimate density or invent a conversion.
-- The server—not you—will divide consumed_amount by source_amount and multiply the label macros.
-- For generic whole foods, use a reputable standard nutrition source. Never invent a branded product.
-- If preparation is ambiguous (for example cooked vs dry rice), choose the most ordinary interpretation and state it in assumptions.
-- Include oils, sauces, and cooking ingredients only when the user mentions them. Do not silently add ingredients.
-- Open the exact product or nutrition page before answering. Never use a brand homepage, retailer homepage, search page, category page, or generic landing page as source_url.
-- Use the exact direct URL returned by search/fetch. Copy a short excerpt containing serving size, calories, protein, carbs, and fat into "evidence" when the page exposes it.
-- If exact product evidence is unavailable after searching, use an authoritative generic-food source, explain the substitution in assumptions, set confidence low, and still return the best practical estimate. Never refuse to produce the meal log.
-- Mark confidence high only for an exact product/variant and exact serving conversion; medium for an authoritative generic-food match; low for any necessary approximation.
+Rules:
+- Do not browse or call tools. Use your nutrition knowledge to give the closest practical estimate in one response.
+- Include only foods, quantities, oils, sauces, and cooking ingredients the user mentions.
+- If preparation or quantity is unclear, use an ordinary serving and state that short assumption.
+- Never refuse because a product cannot be identified. Use confidence "low" when estimating.
+- For every item, set source_url, source_title, and evidence to null. Use the consumed quantity for both consumed and source amount/unit so the server stores the estimate directly.
+- Use one of: g, ml, oz, cup, tbsp, tsp, piece, slice, container, package, serving.
 
 Output ONLY one JSON object with this exact shape:
 {
@@ -142,15 +134,10 @@ export async function POST(req: Request) {
 
   try {
     // Keep nutrition research independent from the conversational coach model.
-    // Luna is the fast default for conversational meal logging. The server still
-    // verifies citations and serving conversions before storing nutrition.
-    // Gemini's native web-search endpoint is the reliable fast path for meal
-    // lookup. Keep it fixed so an old deployment environment cannot override
-    // the request into a model with incompatible server-tool behavior.
+    // A direct Gemini estimate is the fast path. Web search made this simple
+    // action unbounded and prevented users from logging meals quickly.
     const model = "google/gemini-3.5-flash";
-    // One quick path: concise research work, followed by the same citation and
-    // serving verification before anything is stored.
-    const budget = { maxResults: 3, maxTotalResults: 12, maxTokens: 1_800 };
+    const maxTokens = 1_200;
     const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -168,25 +155,7 @@ export async function POST(req: Request) {
             content: `Log this meal for ${body.logged_on}:\n\n${body.text}`,
           },
         ],
-        tools: [
-          {
-            type: "openrouter:web_search",
-            parameters: {
-              // "auto" uses native search where Luna supports it and otherwise
-              // falls back to OpenRouter's compatible search provider. Forcing
-              // native search made the whole request fail when that capability
-              // was unavailable on the routed provider.
-              engine: "auto",
-              max_results: budget.maxResults,
-              max_total_results: budget.maxTotalResults,
-              max_uses: 3,
-            },
-          },
-        ],
-        // OpenRouter otherwise allows up to 30 server-tool steps. Meal logging
-        // needs one quick lookup pass, not an open-ended research loop.
-        max_tool_calls: 3,
-        max_tokens: budget.maxTokens,
+        max_tokens: maxTokens,
       }),
     });
 
@@ -260,7 +229,7 @@ export async function POST(req: Request) {
       {
         error: missingMigration
           ? "Meal storage is not ready. Apply migrations 0005 and 0008 first."
-          : "I couldn't turn that into a reliable meal. Add quantities and try once more.",
+          : "I couldn't turn that into a meal. Add a little more detail and try once more.",
       },
       { status: 502 },
     );

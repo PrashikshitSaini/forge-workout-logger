@@ -45,22 +45,21 @@ test("forward corrective migration fixes databases that already ran 0009", () =>
   assert.match(correctiveSql, /revoke all on function[\s\S]*from public, anon, authenticated, service_role/i);
 });
 
-test("single quick path lowers provider work without bypassing verification", () => {
+test("single quick path is a direct estimate with server-side macro validation", () => {
   assert.doesNotMatch(analyzer, /body\.fast/);
-  assert.match(analyzer, /maxResults: 3, maxTotalResults: 12, maxTokens: 1_800/);
-  assert.match(analyzer, /engine: "auto"/);
-  assert.doesNotMatch(analyzer, /tool_choice: "required"/);
+  assert.match(analyzer, /maxTokens = 1_200/);
+  assert.doesNotMatch(analyzer, /openrouter:web_search/);
   assert.match(analyzer, /scaleResearchedAnalysis\(analysis, extractCitations/);
 });
 
-test("meal research uses the bounded Gemini web-search path", () => {
+test("meal research uses the direct Gemini estimate path", () => {
   assert.match(analyzer, /google\/gemini-3\.5-flash/);
   assert.doesNotMatch(analyzer, /process\.env\.MEAL_LOGGER_MODEL/);
   assert.doesNotMatch(analyzer, /temperature:/);
   assert.doesNotMatch(analyzer, /response_format:/);
   assert.doesNotMatch(analyzer, /reasoning:/);
-  assert.match(analyzer, /max_uses: 3/);
-  assert.match(analyzer, /max_tool_calls: 3/);
+  assert.doesNotMatch(analyzer, /max_tool_calls:/);
+  assert.doesNotMatch(analyzer, /AbortSignal\.timeout/);
 });
 
 test("provider failures expose a safe category without provider response details", () => {
