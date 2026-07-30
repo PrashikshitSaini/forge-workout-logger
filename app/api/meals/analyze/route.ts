@@ -5,13 +5,8 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { findSimilarMeal } from "@/lib/meal-duplicates";
+import { MealAnalysisSchema, type MealItem } from "@/lib/meal-analysis";
 import { requestMealResearch } from "@/lib/meal-research-provider";
-import {
-  ResearchAnalysisSchema,
-  scaleResearchedAnalysis,
-  type NutritionCitation,
-  type VerifiedMealItem,
-} from "@/lib/nutrition-research";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -22,18 +17,16 @@ const RequestSchema = z.object({
   allow_duplicate: z.boolean().optional(),
 });
 
-const SYSTEM_PROMPT = `You are the meal lookup and estimation engine inside ${APP_NAME}.
+const SYSTEM_PROMPT = `You are the fast meal lookup engine inside ${APP_NAME}.
 Turn the user's natural-language meal into an itemized macro log immediately, using the supplied web results when useful.
 
 Rules:
-- The web context is provided once per request. Use exact product-label facts when they appear; otherwise use your best practical nutrition estimate.
+- Use exact product-label facts when they appear; otherwise give the closest practical estimate.
 - Include only foods, quantities, oils, sauces, and cooking ingredients the user mentions.
 - If preparation or quantity is unclear, use an ordinary serving and state that short assumption.
+- Return macros already scaled to the amount the user ate.
 - Never ask for more information and never refuse because a product cannot be identified. Use confidence "low" when estimating.
-- If the web results support an item, use its direct URL, title, and a short quoted nutrition excerpt. Otherwise set source_url, source_title, and evidence to null.
-- Use the consumed quantity for both consumed and source amount/unit when a serving conversion is uncertain so the server stores the closest practical estimate.
-- When no label serving is available, use "1 serving" for source_serving. Never leave a required field out.
-- Use one of: g, ml, oz, cup, tbsp, tsp, piece, slice, container, package, serving.
+- Add a direct source URL and title when the web result supports an item; otherwise use null. Never invent a source.
 
 Output ONLY one JSON object with this exact shape:
 {
@@ -44,21 +37,13 @@ Output ONLY one JSON object with this exact shape:
     "name": "product or food",
     "brand": "brand or null",
     "quantity": "the consumed quantity in plain language",
-    "source_serving": "serving size exactly as stated by the source",
-    "consumed_amount": 1,
-    "consumed_unit": "cup",
-    "source_amount": 0.5,
-    "source_unit": "cup",
-    "label": {
-      "calories": 0,
-      "protein_g": 0,
-      "carbs_g": 0,
-      "fat_g": 0,
-      "fiber_g": 0
-    },
+    "calories": 0,
+    "protein_g": 0,
+    "carbs_g": 0,
+    "fat_g": 0,
+    "fiber_g": 0,
     "source_url": "direct supporting URL or null",
     "source_title": "short source label or null",
-    "evidence": "source excerpt containing the nutrition facts or null",
     "confidence": "high|medium|low"
   }]
 }`;
@@ -70,7 +55,7 @@ function extractJson(content: string): unknown {
   return JSON.parse(content.slice(start, end + 1));
 }
 
-function totals(items: VerifiedMealItem[]) {
+function totals(items: MealItem[]) {
   const sum = (key: "calories" | "protein_g" | "carbs_g" | "fat_g") =>
     Math.round(items.reduce((total, item) => total + item[key], 0) * 10) / 10;
   return {
@@ -79,29 +64,6 @@ function totals(items: VerifiedMealItem[]) {
     carbs_g: sum("carbs_g"),
     fat_g: sum("fat_g"),
   };
-}
-
-interface OpenRouterAnnotation {
-  type?: string;
-  url_citation?: {
-    url?: string;
-    title?: string;
-    content?: string;
-  };
-}
-
-function extractCitations(annotations: OpenRouterAnnotation[] | undefined): NutritionCitation[] {
-  const citations = new Map<string, NutritionCitation>();
-  for (const annotation of annotations ?? []) {
-    const citation = annotation.url_citation;
-    if (annotation.type !== "url_citation" || !citation?.url) continue;
-    citations.set(citation.url, {
-      url: citation.url,
-      title: citation.title?.trim() || new URL(citation.url).hostname,
-      content: citation.content ?? "",
-    });
-  }
-  return [...citations.values()];
 }
 
 export async function POST(req: Request) {
@@ -163,14 +125,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error, provider_status: aiResponse.status }, { status: 502 });
     }
 
-    const payload = (await aiResponse.json()) as {
-      choices?: { message?: { content?: string; annotations?: OpenRouterAnnotation[] } }[];
-    };
-    const message = payload.choices?.[0]?.message;
-    const content = message?.content?.trim();
+    const payload = (await aiResponse.json()) as { choices?: { message?: { content?: string } }[] };
+    const content = payload.choices?.[0]?.message?.content?.trim();
     if (!content) throw new Error("Empty meal research response.");
-    const analysis = ResearchAnalysisSchema.parse(extractJson(content));
-    const items = scaleResearchedAnalysis(analysis, extractCitations(message?.annotations));
+    const analysis = MealAnalysisSchema.parse(extractJson(content));
+    const items = analysis.items;
 
     if (!body.meal_id && !body.allow_duplicate) {
       const { data: existingMeals, error: existingMealsError } = await supabase

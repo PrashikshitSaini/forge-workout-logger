@@ -45,11 +45,12 @@ test("forward corrective migration fixes databases that already ran 0009", () =>
   assert.match(correctiveSql, /revoke all on function[\s\S]*from public, anon, authenticated, service_role/i);
 });
 
-test("single quick path uses one web context with server-side macro validation", () => {
+test("single quick path uses one web context and accepts directly scaled macros", () => {
   assert.doesNotMatch(analyzer, /body\.fast/);
   assert.match(analyzer, /requestMealResearch/);
   assert.doesNotMatch(analyzer, /openrouter:web_search/);
-  assert.match(analyzer, /scaleResearchedAnalysis\(analysis, extractCitations/);
+  assert.match(analyzer, /const items = analysis\.items/);
+  assert.doesNotMatch(analyzer, /ResearchAnalysisSchema/);
 });
 
 test("meal research uses Gemini Flash with a one-shot web lookup", () => {
