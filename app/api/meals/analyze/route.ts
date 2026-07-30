@@ -144,7 +144,9 @@ export async function POST(req: Request) {
     // Keep nutrition research independent from the conversational coach model.
     // Luna is the fast default for conversational meal logging. The server still
     // verifies citations and serving conversions before storing nutrition.
-    const model = process.env.MEAL_LOGGER_MODEL || "openai/gpt-5.6-luna";
+    // Meal logging has one deliberately fixed model. Do not let an older
+    // deployment environment override this into a different provider/model.
+    const model = "openai/gpt-5.6-luna";
     // One quick path: concise research work, followed by the same citation and
     // serving verification before anything is stored.
     const budget = { maxResults: 3, maxTotalResults: 12, maxTokens: 1_800 };
