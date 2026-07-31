@@ -49,26 +49,25 @@ Output ONLY one JSON object with this exact shape:
 }`;
 
 function extractJson(content: string): unknown {
-  const start = content.indexOf("{");
-  const end = content.lastIndexOf("}");
+  const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("The meal researcher did not return a JSON object.");
-  return JSON.parse(content.slice(start, end + 1));
+  return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-type MessageContent =
-  | string
-  | { type?: string; text?: string; content?: string }[]
-  | { text?: string; content?: string };
+type MessageContent = unknown;
 
-function contentText(content: MessageContent | undefined): string {
+function contentText(content: MessageContent): string {
   if (typeof content === "string") return content.trim();
-  if (!content) return "";
-  if (!Array.isArray(content)) return (content.text || content.content || "").trim();
-  return content
-    .map((part) => part.text || part.content || "")
-    .filter(Boolean)
-    .join("\n")
-    .trim();
+  if (Array.isArray(content)) return content.map(contentText).filter(Boolean).join("\n").trim();
+  if (!content || typeof content !== "object") return "";
+  const value = content as Record<string, unknown>;
+  for (const key of ["text", "content", "output_text"]) {
+    const text = contentText(value[key]);
+    if (text) return text;
+  }
+  return "";
 }
 
 function totals(items: MealItem[]) {
@@ -142,9 +141,12 @@ export async function POST(req: Request) {
     }
 
     const payload = (await aiResponse.json()) as {
-      choices?: { message?: { content?: MessageContent } }[];
+      output_text?: MessageContent;
+      choices?: { text?: MessageContent; message?: { content?: MessageContent } }[];
     };
-    const content = contentText(payload.choices?.[0]?.message?.content);
+    const content = contentText(
+      payload.choices?.[0]?.message?.content ?? payload.choices?.[0]?.text ?? payload.output_text,
+    );
     if (!content) throw new Error("Empty meal research response.");
     const analysis = MealAnalysisSchema.parse(extractJson(content));
     const items = analysis.items;
@@ -190,12 +192,16 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("Meal analysis failed", err);
-    const missingMigration = err instanceof Error && /create_meal|replace_meal|schema cache/i.test(err.message);
+    const message = err instanceof Error ? err.message : "";
+    const missingMigration = /create_meal|replace_meal|schema cache/i.test(message);
+    const incompleteResearch = /incomplete result|Empty meal research|did not return a JSON/i.test(message);
     return NextResponse.json(
       {
         error: missingMigration
           ? "Meal storage is not ready. Apply migrations 0005 and 0008 first."
-          : "I couldn't turn that into a meal. Add a little more detail and try once more.",
+          : incompleteResearch
+            ? "The nutrition lookup returned an incomplete result. Please try again."
+            : "I couldn't turn that into a meal. Add a little more detail and try once more.",
       },
       { status: 502 },
     );
