@@ -22,13 +22,13 @@ const nullableNumberField = (max: number) =>
       }
       return value;
     },
-    z.number().min(0).max(max).nullable(),
+    z.number().min(0).max(max).nullable().default(null),
   );
 
 const nullableStringField = (max: number) =>
   z.preprocess(
     (value) => (value == null || value === "" ? null : value),
-    z.string().trim().min(1).max(max).nullable(),
+    z.string().trim().min(1).max(max).nullable().default(null),
   );
 
 export const MealItemSchema = z.object({

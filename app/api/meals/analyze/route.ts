@@ -55,13 +55,18 @@ function extractJson(content: string): unknown {
   return JSON.parse(content.slice(start, end + 1));
 }
 
-type MessageContent = string | { type?: string; text?: string }[];
+type MessageContent =
+  | string
+  | { type?: string; text?: string; content?: string }[]
+  | { text?: string; content?: string };
 
 function contentText(content: MessageContent | undefined): string {
   if (typeof content === "string") return content.trim();
-  return (content ?? [])
-    .filter((part) => part.type === "text" && typeof part.text === "string")
-    .map((part) => part.text)
+  if (!content) return "";
+  if (!Array.isArray(content)) return (content.text || content.content || "").trim();
+  return content
+    .map((part) => part.text || part.content || "")
+    .filter(Boolean)
     .join("\n")
     .trim();
 }

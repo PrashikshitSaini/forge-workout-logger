@@ -42,3 +42,24 @@ test("tolerates common nutrition-response omissions and numeric strings", () => 
   assert.equal(result.items[0].confidence, "low");
   assert.equal(result.items[0].calories, 357);
 });
+
+test("defaults omitted nullable item fields", () => {
+  const [item] = MealAnalysisSchema.parse({
+    title: "Simple lunch",
+    meal_type: "lunch",
+    items: [{
+      name: "White bread",
+      quantity: "2 slices",
+      calories: 140,
+      protein_g: 5,
+      carbs_g: 26,
+      fat_g: 2,
+    }],
+  }).items;
+
+  assert.equal(item.brand, null);
+  assert.equal(item.fiber_g, null);
+  assert.equal(item.source_url, null);
+  assert.equal(item.source_title, null);
+  assert.equal(item.confidence, "low");
+});
