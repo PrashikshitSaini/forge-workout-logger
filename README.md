@@ -15,6 +15,8 @@ terse, useful observation when you open the app; tap it to chat.
 - **AI coach** (OpenRouter): insight-on-open + chat, grounded in your data.
 - **Conversational meal logging**: describe a meal naturally; OpenRouter web
   search researches branded labels, itemizes it, and logs daily macros + sources.
+- **Inline meal corrections**: edit a logged meal's title, ingredients, serving
+  text, and macro values directly in its card when the researched result needs a correction.
 - **PWA**: installs to your Android home screen, works offline-tolerant.
 
 ## Stack
@@ -35,6 +37,10 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Supabase
    - `supabase/migrations/0005_meals.sql`
    - `supabase/migrations/0006_atomic_workout_edits.sql`
    - `supabase/migrations/0007_unify_daily_health.sql`
+   - `supabase/migrations/0008_atomic_meal_research_updates.sql`
+   - `supabase/migrations/0009_durable_meals_and_reuse.sql`
+   - `supabase/migrations/0010_fix_durable_meal_rpc_privileges.sql`
+   - `supabase/migrations/0011_disable_background_meal_research.sql`
 3. **Auth → Providers → Email**: ensure Email is enabled (magic link). For local
    testing, add `http://localhost:3000/**` under **Auth → URL Configuration →
    Redirect URLs** (and your production URL when you deploy).
@@ -53,7 +59,7 @@ cp .env.example .env.local
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | same page (anon/public key) |
 | `OPENROUTER_API_KEY` | [openrouter.ai/keys](https://openrouter.ai/keys) — **server-side only** |
 | `OPENROUTER_MODEL` | any model id, e.g. `openai/gpt-4o-mini` (default) |
-| `MEAL_LOGGER_MODEL` | no longer used; meal research is fixed to `google/gemini-3.5-flash` with one web lookup |
+| `MEAL_LOGGER_MODEL` | no longer used; meal research uses `google/gemini-2.5-flash` with a web lookup and a no-web fallback |
 | `NEXT_PUBLIC_SITE_URL` | your URL (used in OpenRouter attribution) |
 
 ### 3. Run
@@ -93,6 +99,7 @@ app/
   (app)/            authenticated screens (log, history, reports, stats, settings, routines)
   api/ai-chat/      OpenRouter proxy (key stays server-side, per-user rate limited)
   api/meals/analyze OpenRouter web research → validated, atomic meal storage
+  api/meals/[id]    inline authenticated meal and macro corrections
   auth/callback/    magic-link PKCE exchange
   login/            magic-link sign-in
 components/         UI primitives, log flow, routines, charts, coach
