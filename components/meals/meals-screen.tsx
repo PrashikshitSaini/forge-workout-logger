@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, Loader2, Pencil, Search, Sparkles, Trash2 } from "lucide-react";
+import { Check, ExternalLink, Loader2, Pencil, Search, Sparkles, Trash2, X } from "lucide-react";
 import type { MealWithItems } from "@/lib/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getMeals } from "@/lib/queries";
@@ -35,6 +35,8 @@ export function MealsScreen() {
   const [duplicate, setDuplicate] = useState<NonNullable<AnalyzeResponse["duplicate"]> | null>(null);
   const [reusableMeals, setReusableMeals] = useState<ReusableMeal[]>([]);
   const [copyPreview, setCopyPreview] = useState<{ kind: "reusable" | "history"; id: string; title: string; calories: number; status?: string } | null>(null);
+  const [editingMealId, setEditingMealId] = useState<string | null>(null);
+  const [savingMealId, setSavingMealId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -125,11 +127,35 @@ export function MealsScreen() {
   }
 
   function handleEdit(meal: MealWithItems) {
-    setUpdatingMeal(meal);
+    setEditingMealId(meal.id);
+    setUpdatingMeal(null);
     setDuplicate(null);
-    setLoggedOn(meal.logged_on);
-    setText(meal.original_input);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function saveMealEdits(meal: MealWithItems, title: string, items: MealWithItems["meal_items"]) {
+    setSavingMealId(meal.id);
+    try {
+      const response = await fetch(`/api/meals/${meal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          items: items.map(({ id, name, brand, quantity, calories, protein_g, carbs_g, fat_g, fiber_g }) => ({
+            id, name, brand, quantity, calories, protein_g, carbs_g, fat_g, fiber_g,
+          })),
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Couldn't save meal edits.");
+      setEditingMealId(null);
+      await load();
+      window.dispatchEvent(new Event(DATA_CHANGED_EVENT));
+      toast("Meal macros updated.", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't save meal edits.", "error");
+    } finally {
+      setSavingMealId(null);
+    }
   }
 
   async function handleDelete(meal: MealWithItems) {
@@ -271,7 +297,11 @@ export function MealsScreen() {
                 key={meal.id}
                 meal={meal}
                 deleting={deletingId === meal.id}
+                editing={editingMealId === meal.id}
+                saving={savingMealId === meal.id}
                 onEdit={() => handleEdit(meal)}
+                onCancelEdit={() => setEditingMealId(null)}
+                onSaveEdit={(title, items) => void saveMealEdits(meal, title, items)}
                 onDelete={() => void handleDelete(meal)}
                 onSaveReusable={() => void saveReusable(meal)}
               />
@@ -353,69 +383,114 @@ function MacroLegend({
 function MealCard({
   meal,
   deleting,
+  editing,
+  saving,
   onEdit,
+  onCancelEdit,
+  onSaveEdit,
   onDelete,
   onSaveReusable,
 }: {
   meal: MealWithItems;
   deleting: boolean;
+  editing: boolean;
+  saving: boolean;
   onEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (title: string, items: MealWithItems["meal_items"]) => void;
   onDelete: () => void;
   onSaveReusable: () => void;
 }) {
   const macros = mealMacros([meal]);
+  const [title, setTitle] = useState(meal.title);
+  const [items, setItems] = useState(meal.meal_items);
+
+  useEffect(() => {
+    if (!editing) {
+      setTitle(meal.title);
+      setItems(meal.meal_items);
+    }
+  }, [editing, meal]);
+
+  function updateItem(id: string, patch: Partial<MealWithItems["meal_items"][number]>) {
+    setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
+  }
+
   return (
     <article className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex items-start gap-3 p-4">
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-medium uppercase tracking-wide text-accent">{meal.meal_type}</p>
-          <h3 className="truncate font-semibold">{meal.title}</h3>
+          {editing ? (
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              aria-label="Meal title"
+              className="h-9 w-full rounded-md border border-border bg-surface-2 px-2 text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+            />
+          ) : <h3 className="truncate font-semibold">{meal.title}</h3>}
           <p className="mt-1 text-xs text-muted">
             <span className="tabular">{macros.calories}</span> cal · <span className="tabular">{formatMacro(macros.protein_g)}</span>g protein
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="icon" aria-label="Edit and re-research meal" onClick={onEdit} disabled={deleting}>
-            <Pencil size={16} />
-          </Button>
-          <Button variant="ghost" size="icon" aria-label="Delete meal" onClick={onDelete} disabled={deleting}>
-            {deleting ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />}
-          </Button>
-          <button type="button" className="text-xs text-accent" onClick={onSaveReusable} disabled={deleting}>Save</button>
+          {editing ? (
+            <>
+              <Button variant="ghost" size="icon" aria-label="Cancel meal edit" onClick={onCancelEdit} disabled={saving}>
+                <X size={16} />
+              </Button>
+              <Button variant="ghost" size="icon" aria-label="Save meal edits" onClick={() => onSaveEdit(title, items)} disabled={saving}>
+                {saving ? <Loader2 size={17} className="animate-spin" /> : <Check size={17} />}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="icon" aria-label="Edit meal macros" onClick={onEdit} disabled={deleting}>
+                <Pencil size={16} />
+              </Button>
+              <Button variant="ghost" size="icon" aria-label="Delete meal" onClick={onDelete} disabled={deleting}>
+                {deleting ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />}
+              </Button>
+              <button type="button" className="text-xs text-accent" onClick={onSaveReusable} disabled={deleting}>Save</button>
+            </>
+          )}
         </div>
       </div>
 
       <div className="border-t border-border">
-        {meal.meal_items.map((item) => (
+        {items.map((item) => (
           <div key={item.id} className="border-b border-border px-4 py-3 last:border-0">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {item.brand ? `${item.brand} ` : ""}{item.name}
-                </p>
-                <p className="text-xs text-muted">{item.quantity}</p>
+            {editing ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_1fr] gap-2">
+                  <input value={item.name} onChange={(event) => updateItem(item.id, { name: event.target.value })} aria-label="Food name" placeholder="Food" className="h-9 rounded-md border border-border bg-surface-2 px-2 text-sm text-foreground" />
+                  <input value={item.brand ?? ""} onChange={(event) => updateItem(item.id, { brand: event.target.value })} aria-label="Brand" placeholder="Brand" className="h-9 rounded-md border border-border bg-surface-2 px-2 text-sm text-foreground" />
+                </div>
+                <input value={item.quantity} onChange={(event) => updateItem(item.id, { quantity: event.target.value })} aria-label="Quantity" placeholder="Quantity" className="h-9 w-full rounded-md border border-border bg-surface-2 px-2 text-sm text-foreground" />
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {(["calories", "protein_g", "carbs_g", "fat_g", "fiber_g"] as const).map((field) => (
+                    <label key={field} className="text-[10px] uppercase tracking-wide text-muted">
+                      {field === "protein_g" ? "Protein" : field === "carbs_g" ? "Carbs" : field === "fat_g" ? "Fat" : field === "fiber_g" ? "Fiber" : "Calories"}
+                      <input type="number" min="0" step="0.1" value={item[field] ?? ""} onChange={(event) => updateItem(item.id, { [field]: event.target.value === "" ? null : Number(event.target.value) })} className="mt-1 h-9 w-full rounded-md border border-border bg-surface-2 px-2 text-sm text-foreground" />
+                    </label>
+                  ))}
+                </div>
               </div>
-              <p className="tabular shrink-0 text-sm">{Math.round(Number(item.calories))} cal</p>
-            </div>
-            <div className="mt-1.5 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-              <span className="tabular">
-                P {formatMacro(Number(item.protein_g))} · C {formatMacro(Number(item.carbs_g))} · F {formatMacro(Number(item.fat_g))}
-              </span>
-              {item.source_url ? (
-                <a
-                  href={item.source_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex shrink-0 items-center gap-1 text-accent hover:underline"
-                >
-                  Source <ExternalLink size={10} />
-                </a>
-              ) : (
-                <span className={cn("shrink-0 capitalize", item.confidence === "low" && "text-warning")}>
-                  {item.confidence} confidence
-                </span>
-              )}
-            </div>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{item.brand ? `${item.brand} ` : ""}{item.name}</p>
+                    <p className="text-xs text-muted">{item.quantity}</p>
+                  </div>
+                  <p className="tabular shrink-0 text-sm">{Math.round(Number(item.calories))} cal</p>
+                </div>
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                  <span className="tabular">P {formatMacro(Number(item.protein_g))} · C {formatMacro(Number(item.carbs_g))} · F {formatMacro(Number(item.fat_g))}</span>
+                  {item.source_url ? <a href={item.source_url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-accent hover:underline">Source <ExternalLink size={10} /></a> : <span className={cn("shrink-0 capitalize", item.confidence === "low" && "text-warning")}>{item.confidence} confidence</span>}
+                </div>
+              </>
+            )}
           </div>
         ))}
       </div>
