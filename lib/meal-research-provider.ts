@@ -33,8 +33,6 @@ export async function requestMealResearch(
       model: MEAL_RESEARCH_MODEL,
       messages: request.messages,
       plugins: [{ id: "web", engine: "exa", max_results: 3 }],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
       max_tokens: 1_500,
     }),
   });

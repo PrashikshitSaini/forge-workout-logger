@@ -147,7 +147,10 @@ export async function POST(req: Request) {
     const content = contentText(
       payload.choices?.[0]?.message?.content ?? payload.choices?.[0]?.text ?? payload.output_text,
     );
-    if (!content) throw new Error("Empty meal research response.");
+    if (!content) {
+      const providerError = (payload as { error?: { message?: string } }).error?.message;
+      throw new Error(providerError ? `Meal research provider returned no content: ${providerError}` : "Empty meal research response.");
+    }
     const analysis = MealAnalysisSchema.parse(extractJson(content));
     const items = analysis.items;
 
@@ -194,7 +197,7 @@ export async function POST(req: Request) {
     console.error("Meal analysis failed", err);
     const message = err instanceof Error ? err.message : "";
     const missingMigration = /create_meal|replace_meal|schema cache/i.test(message);
-    const incompleteResearch = /incomplete result|Empty meal research|did not return a JSON/i.test(message);
+    const incompleteResearch = /incomplete result|Empty meal research|did not return a JSON|provider returned no content/i.test(message);
     return NextResponse.json(
       {
         error: missingMigration
