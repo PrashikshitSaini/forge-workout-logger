@@ -18,3 +18,27 @@ test("accepts a practical multi-item meal estimate when exact label evidence is 
   assert.equal(result.items.length, 4);
   assert.equal(result.items.reduce((total, item) => total + item.calories, 0), 550);
 });
+
+test("tolerates common nutrition-response omissions and numeric strings", () => {
+  const result = MealAnalysisSchema.parse({
+    title: "Pasta and cottage cheese",
+    meal_type: "lunch",
+    items: [
+      {
+        name: "Elbow pasta",
+        brand: "Barilla",
+        quantity: "100 g",
+        calories: "357",
+        protein_g: "12.5",
+        carbs_g: 75,
+        fat_g: 1.8,
+      },
+    ],
+  });
+
+  assert.deepEqual(result.assumptions, []);
+  assert.equal(result.items[0].fiber_g, null);
+  assert.equal(result.items[0].source_url, null);
+  assert.equal(result.items[0].confidence, "low");
+  assert.equal(result.items[0].calories, 357);
+});

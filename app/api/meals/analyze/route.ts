@@ -51,8 +51,19 @@ Output ONLY one JSON object with this exact shape:
 function extractJson(content: string): unknown {
   const start = content.indexOf("{");
   const end = content.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("The model did not return a JSON object.");
+  if (start < 0 || end <= start) throw new Error("The meal researcher did not return a JSON object.");
   return JSON.parse(content.slice(start, end + 1));
+}
+
+type MessageContent = string | { type?: string; text?: string }[];
+
+function contentText(content: MessageContent | undefined): string {
+  if (typeof content === "string") return content.trim();
+  return (content ?? [])
+    .filter((part) => part.type === "text" && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
 }
 
 function totals(items: MealItem[]) {
@@ -125,8 +136,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error, provider_status: aiResponse.status }, { status: 502 });
     }
 
-    const payload = (await aiResponse.json()) as { choices?: { message?: { content?: string } }[] };
-    const content = payload.choices?.[0]?.message?.content?.trim();
+    const payload = (await aiResponse.json()) as {
+      choices?: { message?: { content?: MessageContent } }[];
+    };
+    const content = contentText(payload.choices?.[0]?.message?.content);
     if (!content) throw new Error("Empty meal research response.");
     const analysis = MealAnalysisSchema.parse(extractJson(content));
     const items = analysis.items;
