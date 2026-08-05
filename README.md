@@ -41,6 +41,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Supabase
    - `supabase/migrations/0009_durable_meals_and_reuse.sql`
    - `supabase/migrations/0010_fix_durable_meal_rpc_privileges.sql`
    - `supabase/migrations/0011_disable_background_meal_research.sql`
+   - `supabase/migrations/0012_workout_export_credentials.sql`
 3. **Auth → Providers → Email**: ensure Email is enabled (magic link). For local
    testing, add `http://localhost:3000/**` under **Auth → URL Configuration →
    Redirect URLs** (and your production URL when you deploy).
@@ -86,6 +87,28 @@ daily weight, steps, calories, sleep, distance, and heart-rate data to
 the AI uses the same consolidated values to relate recovery to training.
 For structured sync payloads, send weight as `bodyweight` in the app's configured
 weight unit alongside the existing health fields.
+
+## Workout export for curl and automations
+
+After applying migration `0012_workout_export_credentials.sql`, sign in and open
+**Settings → Workout export API**. Choose a password there; the app stores only
+a salted hash and gives your account an unguessable endpoint URL. No separate
+deployment-level export token or user ID is required.
+
+```bash
+curl --fail --silent --show-error \
+  -u 'forge:YOUR_EXPORT_PASSWORD' \
+  "https://your-forge-domain.example/api/workouts/export/YOUR_ENDPOINT_ID?from=2026-01-01" \
+  -o workouts.json
+```
+
+The JSON includes every matching workout (including unfinished sets), a compact
+summary, and chronological per-exercise trend entries with completed-set counts,
+reps, strength volume, best weight, estimated one-rep max, and cardio duration.
+`from` and `to` are optional `YYYY-MM-DD` filters; with neither, the full
+workout history is returned. Change the password at any time in Settings; choose
+**Rotate the endpoint URL** there if a link is exposed. Never put the password
+in a browser URL or commit it.
 
 ## Deploy (Vercel)
 

@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { ChangeRegimeModal } from "./change-regime-modal";
+import { WorkoutExportSettings } from "./workout-export-settings";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveRegime, getRegimes } from "@/lib/queries";
 import { formatShortDate } from "@/lib/format";
@@ -103,6 +104,8 @@ export function SettingsScreen() {
             <ChevronRight size={18} className="text-muted-foreground" />
           </Link>
         </section>
+
+        <WorkoutExportSettings />
 
         {/* Past regimes */}
         {archived.length > 0 ? (
