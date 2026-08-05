@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { KeyRound, Loader2 } from "lucide-react";
+import { Copy, KeyRound, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
@@ -52,6 +52,19 @@ export function WorkoutExportSettings() {
   const endpoint = config?.endpoint_path && typeof window !== "undefined"
     ? `${window.location.origin}${config.endpoint_path}`
     : null;
+  const agentPrompt = endpoint
+    ? `Retrieve my Forge workout data from this read-only export endpoint:\n${endpoint}\n\nUse HTTP Basic Auth with username \`forge\` and the password from the \`FORGE_WORKOUT_EXPORT_PASSWORD\` environment variable. For example:\n\`curl --fail --silent --show-error -u "forge:$FORGE_WORKOUT_EXPORT_PASSWORD" "${endpoint}"\`\n\nNever print, commit, log, or put the password in a URL. Save the JSON locally, then use it to analyze workout trends or update my approved personal tools (such as Notion).`
+    : null;
+
+  async function copyAgentPrompt() {
+    if (!agentPrompt) return;
+    try {
+      await navigator.clipboard.writeText(agentPrompt);
+      toast("Agent prompt copied.", "success");
+    } catch {
+      toast("Couldn't copy the agent prompt.", "error");
+    }
+  }
 
   return (
     <section className="space-y-2">
@@ -76,7 +89,15 @@ export function WorkoutExportSettings() {
           {saving ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
           {config?.configured ? "Update export password" : "Enable workout export"}
         </Button>
-        {endpoint ? <p className="text-xs leading-5 text-muted">Use <code>curl -u forge:YOUR_PASSWORD &quot;{endpoint}&quot;</code>. Keep the password in your automation&apos;s secret store.</p> : null}
+        {endpoint ? (
+          <>
+            <p className="text-xs leading-5 text-muted">Use <code>curl -u forge:YOUR_PASSWORD &quot;{endpoint}&quot;</code>. Keep the password in your automation&apos;s secret store.</p>
+            <Button variant="secondary" className="w-full" onClick={() => void copyAgentPrompt()}>
+              <Copy size={16} /> Copy prompt for an agent
+            </Button>
+            <p className="text-xs leading-5 text-muted">The copied prompt includes the endpoint but never your password. Set it as <code>FORGE_WORKOUT_EXPORT_PASSWORD</code> in the agent&apos;s secret environment.</p>
+          </>
+        ) : null}
       </div>
     </section>
   );
