@@ -11,6 +11,7 @@ import { toast } from "@/components/ui/toast";
 import { ChangeRegimeModal } from "./change-regime-modal";
 import { WorkoutExportSettings } from "./workout-export-settings";
 import { WorkoutShareExport } from "./workout-share-export";
+import { WorkoutTemplateImport } from "./workout-template-import";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveRegime, getRegimes } from "@/lib/queries";
 import { formatShortDate } from "@/lib/format";
@@ -108,6 +109,7 @@ export function SettingsScreen() {
 
         <WorkoutExportSettings />
         <WorkoutShareExport />
+        <WorkoutTemplateImport />
 
         {/* Past regimes */}
         {archived.length > 0 ? (

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildWorkoutShareCart, buildWorkoutShareFile } from "../lib/workout-share-export.ts";
+import { parseWorkoutTemplate } from "../lib/workout-template-import.ts";
 
 test("share cart groups all historical exercises by performed weekday and removes duplicate names", () => {
   const cart = buildWorkoutShareCart([
@@ -23,4 +24,24 @@ test("share file contains only selected days and ordered exercise names", () => 
     { day: "Monday", exercises: ["Smith machine press", "Incline dumbbell press"] },
     { day: "Tuesday", exercises: ["Cable row"] },
   ]);
+});
+
+test("shared workout template is parsed with weekday and exercise order intact", () => {
+  assert.deepEqual(parseWorkoutTemplate({
+    format: "forge-workout-template-v1",
+    exported_at: "2026-08-16T00:00:00.000Z",
+    days: [{ day: "Monday", exercises: ["Smith machine press", "Cable fly"] }],
+  }), {
+    days: [{ day: 1, label: "Monday", exercises: ["Smith machine press", "Cable fly"] }],
+  });
+});
+
+test("shared workout template rejects a repeated day", () => {
+  assert.throws(() => parseWorkoutTemplate({
+    format: "forge-workout-template-v1",
+    days: [
+      { day: "Monday", exercises: ["Smith machine press"] },
+      { day: "Monday", exercises: ["Cable fly"] },
+    ],
+  }), /repeated day/);
 });
