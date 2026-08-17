@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Download, Loader2, Send, Share2, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Loader2, Share2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "@/components/ui/toast";
@@ -50,7 +50,16 @@ export function WorkoutShareExport() {
     setCart((current) => current ? { ...current, [day]: items } : current);
   }
 
-  async function exportFile() {
+  function downloadFile(file: File) {
+    const url = URL.createObjectURL(file);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = file.name;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportFile() {
     if (!cart || selectedDays.length === 0) {
       toast("Select at least one day to export.", "error");
       return;
@@ -62,27 +71,7 @@ export function WorkoutShareExport() {
       { type: "application/json" },
     );
 
-    try {
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          title: "Forge workout template",
-          text: "Workout exercise template",
-          files: [file],
-        });
-        toast("Export ready to share.", "success");
-        return;
-      }
-    } catch {
-      toast("Sharing was canceled.", "error");
-      return;
-    }
-
-    const url = URL.createObjectURL(file);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = file.name;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadFile(file);
     toast("Workout template downloaded.", "success");
   }
 
@@ -111,8 +100,8 @@ export function WorkoutShareExport() {
         onClose={() => setOpen(false)}
         title="Workout export cart"
         footer={
-          <Button className="w-full" onClick={() => void exportFile()} disabled={loading || !cart || selectedDays.length === 0}>
-            <Send size={16} /> Share export ({exportedExercises})
+          <Button className="w-full" onClick={exportFile} disabled={loading || !cart || selectedDays.length === 0}>
+            <Download size={16} /> Download export ({exportedExercises})
           </Button>
         }
       >
@@ -156,7 +145,7 @@ export function WorkoutShareExport() {
                 ) : <p className="px-3 py-4 text-sm text-muted">No exercises logged on {label} yet.</p>}
               </section>
             ))}
-            <p className="flex items-center gap-2 text-xs leading-5 text-muted"><Download size={14} /> Your phone&apos;s share sheet opens when available (WhatsApp, Messages, etc.); otherwise the JSON file downloads.</p>
+            <p className="flex items-center gap-2 text-xs leading-5 text-muted"><Download size={14} /> This downloads one JSON file, ready to send anywhere or import into Forge.</p>
           </div>
         ) : null}
       </Modal>
