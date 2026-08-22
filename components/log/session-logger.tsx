@@ -31,6 +31,7 @@ import {
 import { summarizeSets } from "@/lib/set-summary";
 import { DATA_CHANGED_EVENT } from "@/lib/events";
 import { getWorkoutNoteHistory } from "@/lib/queries";
+import { useWeightUnit } from "@/components/weight-unit-provider";
 import { NoteHistoryModal } from "./note-history-modal";
 import type { RegisterSetFlush } from "./set-row";
 import {
@@ -49,6 +50,7 @@ export function SessionLogger({
   lastSession: SessionFull | null;
 }) {
   const sb = createSupabaseBrowserClient();
+  const { weightUnit } = useWeightUnit();
   const [exercises, setExercises] = useState<SessionExerciseFull[]>(() => {
     const recoveredOrder = getPendingReorder(session.id);
     if (!recoveredOrder) return session.session_exercises;
@@ -283,7 +285,7 @@ export function SessionLogger({
         <AnimatePresence initial={false}>
           {exercises.map((se, i) => {
             const last = lastByExercise.get(se.exercise_id);
-            const lastSummary = last ? summarizeSets(last.sets, se.exercise.type) : undefined;
+            const lastSummary = last ? summarizeSets(last.sets, se.exercise.type, weightUnit) : undefined;
             return (
               <motion.div
                 key={se.id}

@@ -10,7 +10,8 @@ import { toast } from "@/components/ui/toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getExerciseHistory, getExercises, type ExerciseSetPoint } from "@/lib/queries";
 import { estimateOneRepMax, formatDuration, formatShortDate, parseISODate } from "@/lib/format";
-import { WEIGHT_UNIT } from "@/lib/constants";
+import { useWeightUnit } from "@/components/weight-unit-provider";
+import { displayWeight, formatWeight } from "@/lib/weight-units";
 
 interface SessionPoint {
   date: string;
@@ -53,6 +54,7 @@ function groupByDate(points: ExerciseSetPoint[]): SessionPoint[] {
 
 export function HistoryScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const [sb] = useState(() => createSupabaseBrowserClient());
+  const { weightUnit } = useWeightUnit();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [query, setQuery] = useState("");
@@ -125,7 +127,7 @@ export function HistoryScreen({ embedded = false }: { embedded?: boolean } = {})
         ? p.maxDuration != null
           ? Math.round(p.maxDuration / 60)
           : null
-        : p.bestE1RM;
+        : displayWeight(p.bestE1RM, weightUnit);
       return value != null ? { label, value } : null;
     })
     .filter((x): x is { label: string; value: number } => x !== null);
@@ -246,11 +248,11 @@ export function HistoryScreen({ embedded = false }: { embedded?: boolean } = {})
                     </h2>
                     {pr > 0 ? (
                       <span className="tabular text-sm text-accent">
-                        PR {isCardio ? formatDuration(pr) : `${pr} ${WEIGHT_UNIT}`}
+                        PR {isCardio ? formatDuration(pr) : `${formatWeight(pr, weightUnit)} ${weightUnit}`}
                       </span>
                     ) : null}
                   </div>
-                  <LineChart data={chartData} unit={isCardio ? " min" : ` ${WEIGHT_UNIT}`} />
+                  <LineChart data={chartData} unit={isCardio ? " min" : ` ${weightUnit}`} />
                 </div>
 
                 <section className="space-y-2">
@@ -279,11 +281,11 @@ export function HistoryScreen({ embedded = false }: { embedded?: boolean } = {})
                                 {isCardio
                                   ? formatDuration(p.maxDuration)
                                   : p.topWeight != null
-                                    ? `${p.topWeight}×${p.topReps ?? "–"}`
+                                    ? `${formatWeight(p.topWeight, weightUnit)}×${p.topReps ?? "–"}`
                                     : "–"}
                               </td>
                               <td className="tabular px-3 py-2 text-right text-muted">
-                                {isCardio ? "" : p.bestE1RM != null ? `${p.bestE1RM}` : "–"}
+                                {isCardio ? "" : p.bestE1RM != null ? formatWeight(p.bestE1RM, weightUnit) : "–"}
                               </td>
                             </tr>
                           ))}

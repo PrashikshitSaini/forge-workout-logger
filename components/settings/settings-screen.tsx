@@ -12,6 +12,7 @@ import { ChangeRegimeModal } from "./change-regime-modal";
 import { WorkoutExportSettings } from "./workout-export-settings";
 import { WorkoutShareExport } from "./workout-share-export";
 import { WorkoutTemplateImport } from "./workout-template-import";
+import { useWeightUnit } from "@/components/weight-unit-provider";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getActiveRegime, getRegimes } from "@/lib/queries";
 import { formatShortDate } from "@/lib/format";
@@ -25,6 +26,7 @@ export function SettingsScreen() {
   const [regimes, setRegimes] = useState<Regime[]>([]);
   const [changeOpen, setChangeOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const { weightUnit, loading: weightUnitLoading, setWeightUnit } = useWeightUnit();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,6 +58,15 @@ export function SettingsScreen() {
     } catch {
       toast("Couldn't sign out.", "error");
       setSigningOut(false);
+    }
+  }
+
+  async function changeWeightUnit(unit: "lb" | "kg") {
+    try {
+      await setWeightUnit(unit);
+      toast(`Weights will now be shown in ${unit === "kg" ? "kilograms" : "pounds"}.`, "success");
+    } catch {
+      toast("Couldn't save your weight unit.", "error");
     }
   }
 
@@ -110,6 +121,18 @@ export function SettingsScreen() {
         <WorkoutExportSettings />
         <WorkoutShareExport />
         <WorkoutTemplateImport />
+
+        <section className="space-y-2">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-muted">Units</h2>
+          <div className="rounded-xl border border-border bg-surface p-4">
+            <p className="font-medium">Workout weight</p>
+            <p className="mt-1 text-xs leading-5 text-muted">Choose how weights appear while logging and reviewing workouts. Switching units converts the display; your recorded workouts are kept intact.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button variant={weightUnit === "lb" ? "primary" : "secondary"} disabled={weightUnitLoading} onClick={() => void changeWeightUnit("lb")}>Pounds (lb)</Button>
+              <Button variant={weightUnit === "kg" ? "primary" : "secondary"} disabled={weightUnitLoading} onClick={() => void changeWeightUnit("kg")}>Kilograms (kg)</Button>
+            </div>
+          </div>
+        </section>
 
         {/* Past regimes */}
         {archived.length > 0 ? (

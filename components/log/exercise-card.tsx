@@ -8,10 +8,10 @@ import { Textarea } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { addSet, updateSessionExerciseNotes } from "@/lib/mutations";
-import { WEIGHT_UNIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { getExerciseNoteHistory } from "@/lib/queries";
 import { NoteHistoryModal } from "./note-history-modal";
+import { useWeightUnit } from "@/components/weight-unit-provider";
 
 export function ExerciseCard({
   index,
@@ -30,6 +30,7 @@ export function ExerciseCard({
   const sb = createSupabaseBrowserClient();
   const ex = sessionExercise.exercise;
   const isCardio = ex.type === "cardio";
+  const { weightUnit } = useWeightUnit();
 
   const [sets, setSets] = useState<WorkoutSet[]>(sessionExercise.sets);
   const [notes, setNotes] = useState(sessionExercise.notes ?? "");
@@ -121,22 +122,23 @@ export function ExerciseCard({
       <div className="px-3 pb-1 pt-2">
         <div className="hidden items-center gap-2 px-1 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground min-[480px]:flex">
           <span className="w-9" />
-          <span className="flex-1 text-center">{isCardio ? "min" : WEIGHT_UNIT}</span>
+          <span className="flex-1 text-center">{isCardio ? "min" : weightUnit}</span>
           <span className="flex-1 text-center">{isCardio ? "level" : "reps"}</span>
           <span className="w-8" />
         </div>
         {sets.length === 0 ? (
           <p className="px-1 py-2 text-sm text-muted-foreground">No sets — add one below.</p>
         ) : (
-          sets.map((s) => (
-            <SetRow
-              key={s.id}
-              set={s}
-              type={ex.type}
-              sessionId={sessionExercise.session_id}
-              onDeleted={handleDeleted}
-              registerFlush={registerSetFlush}
-            />
+          sets.map((s, index) => (
+            <div key={s.id} className={index === 0 ? undefined : "mt-2 border-t border-border/80 pt-2"}>
+              <SetRow
+                set={s}
+                type={ex.type}
+                sessionId={sessionExercise.session_id}
+                onDeleted={handleDeleted}
+                registerFlush={registerSetFlush}
+              />
+            </div>
           ))
         )}
       </div>

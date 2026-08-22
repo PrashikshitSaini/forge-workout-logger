@@ -4,6 +4,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { BottomNav } from "@/components/bottom-nav";
 import { Toaster } from "@/components/ui/toast";
 import { CoachBubble } from "@/components/coach/coach-bubble";
+import { WeightUnitProvider } from "@/components/weight-unit-provider";
 
 export default async function AppLayout({
   children,
@@ -19,11 +20,13 @@ export default async function AppLayout({
   if (!user) redirect("/login");
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 flex-col">
-      <main className="flex-1 pb-28">{children}</main>
-      <CoachBubble />
-      <BottomNav />
-      <Toaster />
-    </div>
+    <WeightUnitProvider>
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col">
+        <main className="flex-1 pb-28">{children}</main>
+        <CoachBubble />
+        <BottomNav />
+        <Toaster />
+      </div>
+    </WeightUnitProvider>
   );
 }

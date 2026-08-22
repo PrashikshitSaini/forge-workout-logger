@@ -8,6 +8,8 @@ import { toast } from "@/components/ui/toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { deleteSet, type SetPatch } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
+import { displayWeight, storedWeight } from "@/lib/weight-units";
+import { useWeightUnit } from "@/components/weight-unit-provider";
 import {
   flushPendingSet,
   getPendingSetPatch,
@@ -34,6 +36,7 @@ export function SetRow({
   registerFlush?: RegisterSetFlush;
 }) {
   const sb = createSupabaseBrowserClient();
+  const { weightUnit } = useWeightUnit();
 
   const recovered = getPendingSetPatch(set.id);
   const [weight, setWeight] = useState(recovered?.weight ?? set.weight);
@@ -132,10 +135,11 @@ export function SetRow({
               <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground min-[480px]:hidden">Weight</span>
               <Stepper
                 ariaLabel="weight"
-                value={weight}
+                value={displayWeight(weight, weightUnit)}
                 onChange={(v) => {
-                  setWeight(v);
-                  schedule({ weight: v });
+                  const next = storedWeight(v, weightUnit);
+                  setWeight(next);
+                  schedule({ weight: next });
                 }}
                 step={5}
                 decimals

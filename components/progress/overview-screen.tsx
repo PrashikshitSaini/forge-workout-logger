@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "@/components/ui/toast";
-import { WEIGHT_UNIT } from "@/lib/constants";
 import { formatShortDate, toISODate } from "@/lib/format";
+import { useWeightUnit } from "@/components/weight-unit-provider";
+import { displayWeight, formatWeight, type WeightUnit } from "@/lib/weight-units";
 import {
   buildProgressOverview,
   type ExerciseProgress,
@@ -37,6 +38,7 @@ function monthDates(month: Date): (Date | null)[] {
 
 export function OverviewScreen() {
   const [sb] = useState(() => createSupabaseBrowserClient());
+  const { weightUnit } = useWeightUnit();
   const [overview, setOverview] = useState<ProgressOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
@@ -187,7 +189,7 @@ export function OverviewScreen() {
         </div>
       </section>
 
-      <DayDetail date={selectedDate} day={selectedDay} hasHistory={hasHistory} />
+      <DayDetail date={selectedDate} day={selectedDay} hasHistory={hasHistory} weightUnit={weightUnit} />
     </div>
   );
 }
@@ -234,7 +236,7 @@ function SummaryCard({ label, value, detail }: { label: string; value: string; d
   );
 }
 
-function DayDetail({ date, day, hasHistory }: { date: string | null; day: OverviewDay | null; hasHistory: boolean }) {
+function DayDetail({ date, day, hasHistory, weightUnit }: { date: string | null; day: OverviewDay | null; hasHistory: boolean; weightUnit: WeightUnit }) {
   if (!date) {
     return (
       <section className="rounded-xl border border-border bg-surface p-4 text-center text-sm text-muted-foreground">
@@ -261,17 +263,17 @@ function DayDetail({ date, day, hasHistory }: { date: string | null; day: Overvi
             {day.routines.length > 0 ? day.routines.join(" · ") : "Completed workout"}
           </p>
         </div>
-        {day.volume > 0 ? <span className="tabular text-sm text-accent">{Math.round(day.volume).toLocaleString()} {WEIGHT_UNIT}</span> : null}
+        {day.volume > 0 ? <span className="tabular text-sm text-accent">{Math.round(displayWeight(day.volume, weightUnit) ?? 0).toLocaleString()} {weightUnit}</span> : null}
       </div>
       <p className="mt-3 text-sm text-muted-foreground">
         {day.sessions} completed workout{day.sessions === 1 ? "" : "s"} · {day.exercises} exercise{day.exercises === 1 ? "" : "s"} · {day.completedSets} set{day.completedSets === 1 ? "" : "s"}
       </p>
-      <ExerciseProgressList exercises={day.exerciseProgress} />
+      <ExerciseProgressList exercises={day.exerciseProgress} weightUnit={weightUnit} />
     </section>
   );
 }
 
-function ExerciseProgressList({ exercises }: { exercises: ExerciseProgress[] }) {
+function ExerciseProgressList({ exercises, weightUnit }: { exercises: ExerciseProgress[]; weightUnit: WeightUnit }) {
   if (exercises.length === 0) return null;
   return (
     <div className="mt-5 border-t border-border pt-4">
@@ -282,15 +284,15 @@ function ExerciseProgressList({ exercises }: { exercises: ExerciseProgress[] }) 
             <h4 className="text-sm font-medium">{exercise.exerciseName}</h4>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               {exercise.completedSets} completed set{exercise.completedSets === 1 ? "" : "s"}
-              {exercise.setSummaries.length > 0 ? ` · ${formatSetSummaries(exercise.setSummaries)}` : ""}
+              {exercise.setSummaries.length > 0 ? ` · ${formatSetSummaries(exercise.setSummaries, weightUnit)}` : ""}
             </p>
             {exercise.currentEstimatedMax != null ? (
               <div className="mt-3 flex items-center gap-3">
                 <TrendSparkline values={exercise.recentEstimatedMaxes} />
                 <div>
                   <p className="text-xs text-muted-foreground">Estimated strength</p>
-                  <p className="text-sm font-medium tabular">{Math.round(exercise.currentEstimatedMax).toLocaleString()} {WEIGHT_UNIT}</p>
-                  <p className="text-xs text-muted-foreground">{exerciseComparisonLabel(exercise)}</p>
+                  <p className="text-sm font-medium tabular">{Math.round(displayWeight(exercise.currentEstimatedMax, weightUnit) ?? 0).toLocaleString()} {weightUnit}</p>
+                  <p className="text-xs text-muted-foreground">{exerciseComparisonLabel(exercise, weightUnit)}</p>
                 </div>
               </div>
             ) : (
@@ -305,10 +307,10 @@ function ExerciseProgressList({ exercises }: { exercises: ExerciseProgress[] }) 
   );
 }
 
-function formatSetSummaries(summaries: OverviewSetSummary[]): string {
+function formatSetSummaries(summaries: OverviewSetSummary[], weightUnit: WeightUnit): string {
   const visible = summaries.slice(0, 3).map((summary) => {
     const setCount = summary.count === 1 ? "" : ` (${summary.count} sets)`;
-    if (summary.weight != null && summary.reps != null) return `${summary.weight} ${WEIGHT_UNIT} × ${summary.reps}${setCount}`;
+    if (summary.weight != null && summary.reps != null) return `${formatWeight(summary.weight, weightUnit)} ${weightUnit} × ${summary.reps}${setCount}`;
     if (summary.reps != null) return `${summary.reps} reps${setCount}`;
     return `untracked${setCount}`;
   });
@@ -316,11 +318,11 @@ function formatSetSummaries(summaries: OverviewSetSummary[]): string {
   return `${visible.join(" · ")}${hiddenCount > 0 ? ` +${hiddenCount} more` : ""}`;
 }
 
-function exerciseComparisonLabel(exercise: ExerciseProgress): string {
+function exerciseComparisonLabel(exercise: ExerciseProgress, weightUnit: WeightUnit): string {
   if (exercise.currentEstimatedMax != null && exercise.priorEstimatedMax != null) {
-    const difference = Math.round(exercise.currentEstimatedMax - exercise.priorEstimatedMax);
-    const change = difference === 0 ? "same" : `${difference > 0 ? "+" : ""}${difference.toLocaleString()} ${WEIGHT_UNIT}`;
-    return `${change} vs prior completed session (${Math.round(exercise.priorEstimatedMax).toLocaleString()} ${WEIGHT_UNIT})`;
+    const difference = displayWeight(exercise.currentEstimatedMax - exercise.priorEstimatedMax, weightUnit) ?? 0;
+    const change = difference === 0 ? "same" : `${difference > 0 ? "+" : ""}${Math.round(difference).toLocaleString()} ${weightUnit}`;
+    return `${change} vs prior completed session (${Math.round(displayWeight(exercise.priorEstimatedMax, weightUnit) ?? 0).toLocaleString()} ${weightUnit})`;
   }
   return "Baseline recorded — complete this lift again to compare.";
 }
