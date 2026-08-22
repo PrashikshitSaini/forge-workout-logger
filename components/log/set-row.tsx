@@ -109,14 +109,14 @@ export function SetRow({
   }
 
   return (
-    <div className="flex items-center gap-2 py-1">
+    <div className="flex items-start gap-2 py-1">
       <button
         type="button"
         onClick={toggleDone}
         aria-pressed={done}
         aria-label={done ? "Mark set not done" : "Mark set done"}
         className={cn(
-          "grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition",
+          "grid h-11 w-11 shrink-0 place-items-center rounded-lg border transition",
           done
             ? "border-accent bg-accent text-accent-foreground"
             : "border-border bg-surface-2 text-muted hover:text-foreground",
@@ -125,61 +125,71 @@ export function SetRow({
         <Check size={18} />
       </button>
 
-      {type === "strength" ? (
-        <>
-          <Stepper
-            ariaLabel="weight"
-            value={weight}
-            onChange={(v) => {
-              setWeight(v);
-              schedule({ weight: v });
-            }}
-            step={5}
-            decimals
-            className="flex-1"
-          />
-          <Stepper
-            ariaLabel="reps"
-            value={reps}
-            onChange={(v) => {
-              setReps(v);
-              schedule({ reps: v });
-            }}
-            step={1}
-            className="flex-1"
-          />
-        </>
-      ) : (
-        <>
-          <Stepper
-            ariaLabel="minutes"
-            value={durationMin}
-            onChange={(v) => {
-              setDurationMin(v);
-              schedule({ duration_seconds: v != null ? v * 60 : null });
-            }}
-            step={1}
-            className="flex-1"
-          />
-          <Stepper
-            ariaLabel="level"
-            value={level}
-            onChange={(v) => {
-              setLevel(v);
-              schedule({ level: v });
-            }}
-            step={1}
-            className="flex-1"
-          />
-        </>
-      )}
+      <div className="flex min-w-0 flex-1 flex-col gap-2 min-[480px]:flex-row">
+        {type === "strength" ? (
+          <>
+            <div className="min-w-0 flex-1">
+              <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground min-[480px]:hidden">Weight</span>
+              <Stepper
+                ariaLabel="weight"
+                value={weight}
+                onChange={(v) => {
+                  setWeight(v);
+                  schedule({ weight: v });
+                }}
+                step={5}
+                decimals
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground min-[480px]:hidden">Reps</span>
+              <Stepper
+                ariaLabel="reps"
+                value={reps}
+                onChange={(v) => {
+                  setReps(v);
+                  schedule({ reps: v });
+                }}
+                step={1}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="min-w-0 flex-1">
+              <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground min-[480px]:hidden">Minutes</span>
+              <Stepper
+                ariaLabel="minutes"
+                value={durationMin}
+                onChange={(v) => {
+                  setDurationMin(v);
+                  schedule({ duration_seconds: v != null ? v * 60 : null });
+                }}
+                step={1}
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground min-[480px]:hidden">Level</span>
+              <Stepper
+                ariaLabel="level"
+                value={level}
+                onChange={(v) => {
+                  setLevel(v);
+                  schedule({ level: v });
+                }}
+                step={1}
+              />
+            </div>
+          </>
+        )}
+      </div>
 
       <button
         type="button"
         onClick={handleDelete}
         disabled={deleting}
         aria-label="Delete set"
-        className="grid h-9 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:text-danger disabled:opacity-40"
+        className="grid h-11 w-10 shrink-0 place-items-center rounded-lg text-muted-foreground hover:text-danger disabled:opacity-40"
       >
         <Trash2 size={16} />
       </button>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +33,8 @@ export function Stepper({
   className,
   ariaLabel,
 }: StepperProps) {
+  const [draft, setDraft] = useState<string | null>(null);
+
   const clamp = (n: number) => {
     let v = n;
     if (min !== undefined) v = Math.max(min, v);
@@ -44,23 +47,36 @@ export function Stepper({
     onChange(clamp(base + dir * step));
   };
 
-  const handleType = (raw: string) => {
+  const commitTypedValue = (raw: string) => {
     if (raw.trim() === "") {
       onChange(null);
       return;
     }
-    const parsed = decimals ? parseFloat(raw) : parseInt(raw, 10);
-    if (Number.isNaN(parsed)) return;
+    const parsed = decimals ? Number(raw.replace(",", ".")) : Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return;
     onChange(clamp(parsed));
   };
 
+  const handleType = (raw: string) => {
+    setDraft(raw);
+    if (raw.trim() === "") {
+      onChange(null);
+      return;
+    }
+    // Keep an unfinished decimal visible while the user types (e.g. "10.").
+    // Coercing it immediately loses the decimal point and turns the next digit
+    // into a different weight on mobile keyboards.
+    if (decimals && /^[+-]?\d+[.,]$/.test(raw)) return;
+    commitTypedValue(raw);
+  };
+
   return (
-    <div className={cn("flex items-stretch rounded-lg bg-surface-2 border border-border", className)}>
+    <div className={cn("flex min-w-0 items-stretch rounded-lg border border-border bg-surface-2", className)}>
       <button
         type="button"
         aria-label={`Decrease ${ariaLabel ?? ""}`.trim()}
         onClick={() => bump(-1)}
-        className="grid w-10 place-items-center text-muted hover:text-foreground active:bg-border/60 rounded-l-lg"
+        className="grid w-10 shrink-0 place-items-center rounded-l-lg text-muted hover:text-foreground active:bg-border/60"
       >
         <Minus size={18} />
       </button>
@@ -68,11 +84,20 @@ export function Stepper({
         <input
           inputMode={decimals ? "decimal" : "numeric"}
           aria-label={ariaLabel}
-          value={value ?? ""}
+          value={draft ?? value ?? ""}
           onChange={(e) => handleType(e.target.value)}
-          onFocus={(e) => e.currentTarget.select()}
+          onFocus={(e) => {
+            setDraft(value?.toString() ?? "");
+            e.currentTarget.select();
+          }}
+          onBlur={() => {
+            if (draft !== null) commitTypedValue(draft);
+            setDraft(null);
+          }}
           placeholder="–"
-          className="tabular w-full min-w-0 bg-transparent text-center text-lg font-semibold text-foreground caret-accent placeholder:text-muted-foreground focus:outline-none"
+          autoComplete="off"
+          enterKeyHint="done"
+          className="tabular h-11 w-full min-w-0 bg-transparent text-center text-lg font-semibold text-foreground caret-accent placeholder:text-muted-foreground focus:outline-none"
         />
         {suffix ? <span className="text-xs text-muted-foreground">{suffix}</span> : null}
       </div>
@@ -80,7 +105,7 @@ export function Stepper({
         type="button"
         aria-label={`Increase ${ariaLabel ?? ""}`.trim()}
         onClick={() => bump(1)}
-        className="grid w-10 place-items-center text-muted hover:text-foreground active:bg-border/60 rounded-r-lg"
+        className="grid w-10 shrink-0 place-items-center rounded-r-lg text-muted hover:text-foreground active:bg-border/60"
       >
         <Plus size={18} />
       </button>

@@ -119,7 +119,7 @@ export function ExerciseCard({
       ) : null}
 
       <div className="px-3 pb-1 pt-2">
-        <div className="flex items-center gap-2 px-1 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+        <div className="hidden items-center gap-2 px-1 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground min-[480px]:flex">
           <span className="w-9" />
           <span className="flex-1 text-center">{isCardio ? "min" : WEIGHT_UNIT}</span>
           <span className="flex-1 text-center">{isCardio ? "level" : "reps"}</span>
