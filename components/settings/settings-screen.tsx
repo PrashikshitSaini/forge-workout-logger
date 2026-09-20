@@ -99,7 +99,7 @@ export function SettingsScreen() {
                 className="mt-3 w-full"
                 onClick={() => setChangeOpen(true)}
               >
-                <RefreshCw size={16} /> Change regime
+                <RefreshCw size={16} /> Start new regime
               </Button>
             ) : null}
           </div>

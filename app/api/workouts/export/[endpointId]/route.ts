@@ -4,6 +4,7 @@ import { buildWorkoutExport, type ExportSession } from "@/lib/workout-export";
 import { verifyWorkoutExportPassword } from "@/lib/workout-export-password";
 import { rateLimit } from "@/lib/rate-limit";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
+import { finishStaleSessions } from "@/lib/session-lifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,6 +65,7 @@ export async function GET(request: Request, context: { params: Promise<{ endpoin
     if (!credential || !(await verifyWorkoutExportPassword(password, credential.password_hash))) {
       return noStoreJson({ error: "Unauthorized." }, { status: 401, headers: { "WWW-Authenticate": 'Basic realm="Forge workout export"' } });
     }
+    await finishStaleSessions(service, credential.user_id);
 
     const rows: ExportSession[] = [];
     for (let offset = 0; ; offset += PAGE_SIZE) {

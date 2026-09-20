@@ -43,7 +43,7 @@ export function ChangeRegimeModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Change regime">
+    <Modal open={open} onClose={onClose} title="Start new regime">
       <div className="space-y-4">
         <p className="text-sm text-muted">
           Your current regime{" "}

@@ -5,6 +5,7 @@ import { BottomNav } from "@/components/bottom-nav";
 import { Toaster } from "@/components/ui/toast";
 import { CoachBubble } from "@/components/coach/coach-bubble";
 import { WeightUnitProvider } from "@/components/weight-unit-provider";
+import { finishStaleSessions } from "@/lib/session-lifecycle";
 
 export default async function AppLayout({
   children,
@@ -18,6 +19,7 @@ export default async function AppLayout({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  await finishStaleSessions(supabase, user.id);
 
   return (
     <WeightUnitProvider>

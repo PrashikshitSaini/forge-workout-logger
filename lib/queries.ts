@@ -98,8 +98,20 @@ export async function getSessionFull(
   if (error) throw error;
   if (!data) return null;
   const full = data as SessionFull;
+  const targets = full.routine
+    ? await sb
+        .from("routine_exercises")
+        .select("exercise_id, target_sets, target_reps")
+        .eq("routine_id", full.routine.id)
+        .returns<{ exercise_id: string; target_sets: number | null; target_reps: string | null }[]>()
+    : { data: [], error: null };
+  if (targets.error) throw targets.error;
+  const targetByExercise = new Map((targets.data ?? []).map((target) => [target.exercise_id, target]));
   full.session_exercises.sort((a, b) => a.position - b.position);
   for (const se of full.session_exercises) {
+    const target = targetByExercise.get(se.exercise_id);
+    se.target_sets = target?.target_sets ?? null;
+    se.target_reps = target?.target_reps ?? null;
     se.sets.sort((a, b) => a.set_number - b.set_number);
   }
   return full;

@@ -161,6 +161,8 @@ export interface RoutineWithExercises extends Routine {
 export interface SessionExerciseFull extends SessionExercise {
   exercise: Exercise;
   sets: WorkoutSet[];
+  target_sets: number | null;
+  target_reps: string | null;
 }
 
 /** A full, editable workout session as rendered on the logging screen. */

@@ -156,10 +156,11 @@ export async function reorderSessionExercisesAndRoutine(
 export async function createInitialRegime(
   sb: SupabaseClient,
   name: string,
+  notes?: string | null,
 ): Promise<Regime> {
   const { data, error } = await sb
     .from("regimes")
-    .insert({ name, is_active: true })
+    .insert({ name, notes: notes ?? null, is_active: true })
     .select("*")
     .single();
   if (error) throw error;
@@ -178,6 +179,15 @@ export async function switchRegime(
   });
   if (error) throw error;
   return data as Regime;
+}
+
+export async function updateRegime(
+  sb: SupabaseClient,
+  regimeId: string,
+  patch: Partial<Pick<Regime, "name" | "notes">>,
+): Promise<void> {
+  const { error } = await sb.from("regimes").update(patch).eq("id", regimeId);
+  if (error) throw error;
 }
 
 /* ── Routines ────────────────────────────────────────────────────────────── */

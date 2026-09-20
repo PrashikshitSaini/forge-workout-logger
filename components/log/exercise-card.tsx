@@ -118,6 +118,11 @@ export function ExerciseCard({
       {lastSummary ? (
         <p className="tabular px-3 pt-1 text-xs text-muted-foreground">last → {lastSummary}</p>
       ) : null}
+      {sessionExercise.target_sets !== null || sessionExercise.target_reps !== null ? (
+        <p className="px-3 pt-1 text-xs text-muted-foreground">
+          target → {isCardio ? (sessionExercise.target_reps ?? `${sessionExercise.target_sets ?? "?"} sets`) : `${sessionExercise.target_sets ?? "?"}×${sessionExercise.target_reps ?? "?"}`}
+        </p>
+      ) : null}
 
       <div className="px-3 pb-1 pt-2">
         <div className="hidden items-center gap-2 px-1 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground min-[480px]:flex">
