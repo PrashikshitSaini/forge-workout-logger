@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, ExternalLink, Loader2, Pencil, Search, Sparkles, Trash2, X } from "lucide-react";
+import { Check, ExternalLink, Loader2, Pencil, ScanBarcode, Search, Sparkles, Trash2, X } from "lucide-react";
 import type { MealWithItems } from "@/lib/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getMeals } from "@/lib/queries";
@@ -15,6 +15,7 @@ import { Label, Textarea } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import type { ReusableMeal } from "@/lib/meal-jobs";
+import { BarcodeMeal } from "@/components/meals/barcode-meal";
 
 interface AnalyzeResponse {
   error?: string;
@@ -37,6 +38,7 @@ export function MealsScreen() {
   const [copyPreview, setCopyPreview] = useState<{ kind: "reusable" | "history"; id: string; title: string; calories: number; status?: string } | null>(null);
   const [editingMealId, setEditingMealId] = useState<string | null>(null);
   const [savingMealId, setSavingMealId] = useState<string | null>(null);
+  const [showBarcode, setShowBarcode] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -132,6 +134,12 @@ export function MealsScreen() {
     setDuplicate(null);
   }
 
+  async function handleBarcodeSaved() {
+    await load();
+    window.dispatchEvent(new Event(DATA_CHANGED_EVENT));
+    setShowBarcode(false);
+  }
+
   async function saveMealEdits(meal: MealWithItems, title: string, items: MealWithItems["meal_items"]) {
     setSavingMealId(meal.id);
     try {
@@ -182,9 +190,19 @@ export function MealsScreen() {
 
       <div className="space-y-5 px-4">
         <section className="space-y-3 rounded-xl border border-accent/30 bg-surface p-4">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Sparkles size={17} className="text-accent" />
-            Natural-language meal log
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-medium">
+            <div className="flex min-w-0 items-center gap-2">
+              <Sparkles size={17} className="shrink-0 text-accent" />
+              <span className="truncate">Natural-language meal log</span>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="shrink-0 whitespace-nowrap"
+              onClick={() => setShowBarcode((current) => !current)}
+            >
+              <ScanBarcode size={15} /> {showBarcode ? "Hide scanner" : "Scan barcode"}
+            </Button>
           </div>
 
           <div className="space-y-1.5">
@@ -263,6 +281,8 @@ export function MealsScreen() {
             Forge researches the best available label, scales it to your serving, and always keeps the source confidence visible.
           </p>
         </section>
+
+        {showBarcode ? <BarcodeMeal loggedOn={loggedOn} onSaved={handleBarcodeSaved} /> : null}
 
         {copyPreview ? <section className="space-y-2 rounded-xl border border-accent/40 bg-accent/10 p-4"><p className="text-sm font-medium">Matched {copyPreview.title}</p><p className="text-xs text-muted">{copyPreview.calories} cal{copyPreview.status ? ` · ${copyPreview.status}` : ""}. Review before saving.</p><div className="flex gap-2"><Button size="sm" onClick={() => void confirmCopy()}>Use this meal</Button><Button size="sm" variant="secondary" onClick={() => setCopyPreview(null)}>Cancel</Button></div></section> : null}
 

@@ -15,6 +15,10 @@ terse, useful observation when you open the app; tap it to chat.
 - **AI coach** (OpenRouter): insight-on-open + chat, grounded in your data.
 - **Conversational meal logging**: describe a meal naturally; OpenRouter web
   search researches branded labels, itemizes it, and logs daily macros + sources.
+- **Barcode meal logging**: scan a packaged product's UPC/EAN (or type the digits)
+  to pull its Open Food Facts label, confirm or correct the values and nutrition
+  basis, scale the portion you ate, and log it. Data comes from Open Food Facts
+  contributors and is user-reviewed, not manufacturer-verified.
 - **Inline meal corrections**: edit a logged meal's title, ingredients, serving
   text, and macro values directly in its card when the researched result needs a correction.
 - **PWA**: installs to your Android home screen, works offline-tolerant.
@@ -122,6 +126,7 @@ app/
   (app)/            authenticated screens (log, history, reports, stats, settings, routines)
   api/ai-chat/      OpenRouter proxy (key stays server-side, per-user rate limited)
   api/meals/analyze OpenRouter web research → validated, atomic meal storage
+  api/meals/barcode Open Food Facts barcode lookup → validated, scaled meal storage
   api/meals/[id]    inline authenticated meal and macro corrections
   auth/callback/    magic-link PKCE exchange
   login/            magic-link sign-in
