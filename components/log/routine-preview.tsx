@@ -63,17 +63,23 @@ export function RoutinePreview({
           return (
             <li
               key={re.id}
-              className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-3"
+              className="flex items-start gap-3 rounded-lg border border-border bg-surface px-3 py-3"
             >
-              <span className="tabular w-5 text-center text-sm text-muted-foreground">{i + 1}</span>
+              <span className="tabular w-5 shrink-0 pt-0.5 text-center text-sm text-muted-foreground">
+                {i + 1}
+              </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{re.exercise.name}</p>
                 <p className="truncate text-xs text-muted">
                   {[re.exercise.equipment, re.exercise.muscle_group].filter(Boolean).join(" · ")}
                 </p>
-              </div>
-              <div className="tabular shrink-0 text-right text-xs text-muted">
-                {summary || (re.target_reps ? `${re.target_sets ?? "·"}×${re.target_reps}` : "—")}
+                {re.target_reps ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {re.target_sets ? `${re.target_sets} × ` : ""}
+                    {re.target_reps}
+                  </p>
+                ) : null}
+                {summary ? <p className="tabular mt-0.5 text-xs text-muted">Last: {summary}</p> : null}
               </div>
             </li>
           );
