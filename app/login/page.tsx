@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Mail } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,10 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { APP_TAGLINE } from "@/lib/constants";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"link" | "password">("link");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const configured = isSupabaseConfigured();
@@ -31,6 +35,26 @@ export default function LoginPage() {
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Could not send the link.");
+    }
+  }
+
+  async function signInWithPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim() || !password) return;
+    setStatus("sending");
+    setError(null);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (signInError) throw signInError;
+      router.replace("/");
+      router.refresh();
+    } catch (err) {
+      setStatus("error");
+      setError(err instanceof Error ? err.message : "Could not sign in.");
     }
   }
 
@@ -59,7 +83,10 @@ export default function LoginPage() {
             </p>
           </div>
         ) : (
-          <form onSubmit={sendMagicLink} className="space-y-3">
+          <form
+            onSubmit={mode === "link" ? sendMagicLink : signInWithPassword}
+            className="space-y-3"
+          >
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -73,19 +100,42 @@ export default function LoginPage() {
                 required
               />
             </div>
+            {mode === "password" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+            ) : null}
             <Button type="submit" size="lg" className="w-full" disabled={status === "sending"}>
               {status === "sending" ? (
                 <>
-                  <Loader2 size={18} className="animate-spin" /> Sending…
+                  <Loader2 size={18} className="animate-spin" />{" "}
+                  {mode === "link" ? "Sending…" : "Signing in…"}
                 </>
-              ) : (
+              ) : mode === "link" ? (
                 "Send sign-in link"
+              ) : (
+                "Sign in"
               )}
             </Button>
             {error ? <p className="text-sm text-danger">{error}</p> : null}
-            <p className="pt-1 text-center text-xs text-muted-foreground">
-              No password. We email you a one-tap link.
-            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setMode(mode === "link" ? "password" : "link");
+                setError(null);
+              }}
+              className="block w-full pt-1 text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
+            >
+              {mode === "link" ? "Use a password instead" : "Email me a sign-in link instead"}
+            </button>
           </form>
         )}
       </div>
